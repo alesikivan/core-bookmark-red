@@ -12,7 +12,9 @@ router.get('/get/:id', authMiddleware, controller.getUser)
 
 router.get('/get-groups', authMiddleware, controller.getGroups)
 
-router.get('/get-subscribers', authMiddleware, controller.getSubscribers)
+router.get('/get-followers', authMiddleware, controller.getFollowers)
+
+router.get('/get-followings', authMiddleware, controller.getFollowings)
 
 router.get('/get-lists', authMiddleware, controller.getLists)
 
@@ -25,6 +27,10 @@ router.post('/set-follow', authMiddleware, controller.setFollow)
 router.post('/cancel-follow', authMiddleware, controller.cancelFollow)
 
 router.post('/friend-finder', authMiddleware, controller.friendFinder)
+
+router.post('/followings-finder', authMiddleware, controller.followingsFinder)
+
+router.post('/followers-finder', authMiddleware, controller.followersFinder)
 
 router.post('/subscribers-finder', authMiddleware, controller.subscribersFinder)
 

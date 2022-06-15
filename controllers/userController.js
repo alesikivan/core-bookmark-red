@@ -141,7 +141,7 @@ class UserController {
     }
   }
 
-  async getSubscribers(req, res) {
+  async getFollowers(req, res) {
     try {
       const client = getUserByToken(req.headers.authorization)
 
@@ -156,6 +156,27 @@ class UserController {
       const { followers } = user
 
       return res.status(200).json( followers )
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json({ message: 'Server user functional error. Try to check your entries.' })
+    }
+  }
+
+  async getFollowings(req, res) {
+    try {
+      const client = getUserByToken(req.headers.authorization)
+
+      const user = await User
+        .findOne({ _id: client.id })
+        .populate('following', ['username', 'email', 'profilePhoto'])
+
+      if (!user) {
+        return res.status(403).json({ message: 'User do not exist' })
+      }
+
+      const { following } = user
+
+      return res.status(200).json( following )
     } catch (error) {
       console.log(error)
       return res.status(400).json({ message: 'Server user functional error. Try to check your entries.' })
@@ -195,17 +216,30 @@ class UserController {
       if (!mongoose.isValidObjectId(_id)) {
         return res.status(403).json({ message: 'Not valid ID of group.' })
       }
-  
+      
+      const mongooseUserId = mongoose.Types.ObjectId(user.id)
+
       const group = await Group
-        .findOne({ _id, accessLevel: 'public' })
+        .findOne({ 
+          $or: [
+            { _id, owner: user.id  },
+            { _id, accessLevel: 'public' },
+            // { 
+            //   _id, 
+            //   members: { $in: [mongooseUserId] },
+            // },
+            // { _id, broadcasters: { $in: [mongooseUserId] } },
+            // { _id, admin: { $in: [mongooseUserId] } }
+          ]
+        })
         .populate('owner', ['username'])
         .populate({
           path : 'resources',
-          populate : {
-            path : 'lists',
-            path : 'groups',
-            path : 'owner'
-          }
+          populate : [
+            { path: 'lists' },
+            { path: 'groups' },
+            { path: 'owner' },
+          ]
         })
 
       if (!group) {
@@ -278,6 +312,141 @@ class UserController {
       console.log(e)
       return res.status(400).json({ message: 'Server user functional error. Try to check your entries.' })
     }
+  }
+
+  async followingsFinder(req, res) {
+      const { id, title, skip } = req.body
+
+      if (!mongoose.isValidObjectId(id)) {
+        return res.status(403).json({ message: 'Not valid ID of user.' })
+      }
+
+      const user = await User.findOne({ _id: id })
+
+      const limit = 5
+
+      const addFields = {
+        $addFields: { 
+          status: {
+            $switch: {
+              branches: [
+                { 
+                  case: {
+                    $and: [
+                      { $in: [ '$_id', user.followers ] },
+                      { $in: [ '$_id', user.following ] },
+                    ]
+                  },
+                  then: 'friend' 
+                },
+                { 
+                  case: { $in: [ '$_id', user.followers ] },
+                  then: 'follower' 
+                },
+                { 
+                  case: { $in: [ '$_id', [mongoose.Types.ObjectId(id)] ] },
+                  then: 'me' 
+                },
+                { 
+                  case: { $in: [ '$_id', user.following ] },
+                  then: 'following'  
+                },
+              ],
+              default: "new"
+            }
+          }
+        }
+      }
+
+      const match = { 
+        $match: { 
+          followers: { $in: [mongoose.Types.ObjectId(id)] },
+
+          $or: [
+            { username: { $regex: new RegExp(title, 'i') }, },
+            { email: { $regex: new RegExp(title, 'i') }, }
+          ]
+        }
+      }
+
+      const users = await User
+        .aggregate(
+          [
+            match,
+            {
+              $project: {
+                username: 1,
+                profilePhoto: 1,
+                email: 1,
+              }
+            },
+            addFields,
+            { $skip: skip },
+            { $limit : limit }
+          ]
+        )
+
+      const amount = await User
+        .aggregate(
+          [
+            match,
+            { $count: "usersAmount" } // Output: [{ usersAmount: 1 }] || []
+          ]
+        )
+      
+      const usersAmount = amount.length ? amount[0].usersAmount : 0
+
+      return res.status(200).json( { users, usersAmount, limit } )
+  }
+
+  async followersFinder(req, res) {
+    const { id, title, skip } = req.body
+
+    if (!mongoose.isValidObjectId(id)) 
+      return res.status(403).json({ message: 'Not valid ID of user.' })
+
+    const user = await User.findOne({ _id: id })
+
+    const limit = 5
+
+    const match = { 
+      $match: { 
+        following: { $in: [mongoose.Types.ObjectId(id)] },
+
+        $or: [
+          { username: { $regex: new RegExp(title, 'i') }, },
+          { email: { $regex: new RegExp(title, 'i') }, }
+        ]
+      }
+    }
+
+    const users = await User
+      .aggregate(
+        [
+          match,
+          {
+            $project: {
+              username: 1,
+              profilePhoto: 1,
+              email: 1,
+            }
+          },
+          { $skip: skip },
+          { $limit : limit }
+        ]
+      )
+
+    const amount = await User
+      .aggregate(
+        [
+          match,
+          { $count: "usersAmount" } // Output: [{ usersAmount: 1 }] || []
+        ]
+      )
+    
+    const usersAmount = amount.length ? amount[0].usersAmount : 0
+
+    return res.status(200).json( { users, usersAmount, limit } )
   }
 
   async friendFinder(req, res) {
