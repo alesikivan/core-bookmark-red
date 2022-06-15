@@ -1,6 +1,6 @@
 module.exports = {
   apps : [{
-    script: './index.js',
+    script: './server.js',
     env : {
       'PORT': 80,
       'NODE_ENV' : 'production'
