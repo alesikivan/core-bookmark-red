@@ -213,19 +213,32 @@ class GroupController {
     try {
       const user = getUserByToken(req.headers.authorization)
 
-      const { title = '' } =  req.body
+      const limit = 15
+
+      const { 
+        title = '',
+        skip = 0
+      } = req.body
+
+      const query = { 
+        owner: { $not: { $eq: user.id } },
+        title: { $regex: new RegExp(title, 'i') },
+        accessLevel: { $in: ['public']} ,
+        // accessLevel: { $in: ['public', 'request']} ,
+      }
 
       const groups = await Group
-        .find({ 
-          owner: { $not: { $eq: user.id } },
-          title: { $regex: new RegExp(title, 'i') },
-          accessLevel: { $in: ['public']} ,
-          // accessLevel: { $in: ['public', 'request']} ,
-        })
+        .find(query)
         .populate('owner', ['username'])
-        .sort({ 'dateCreate': -1 }) 
+        .sort({ 'dateCreate': -1 })
+        .skip(skip)
+        .limit(limit)
 
-      return res.status(200).json(groups) 
+      const groupsAmount = await Group
+        .find(query)
+        .count()
+
+      return res.status(200).json( { groups, groupsAmount, limit } ) 
     } catch (error) {
       console.log(error)
       return res.status(400).json({message: 'Server group functional error. Try to check your entries.'})
@@ -236,27 +249,31 @@ class GroupController {
     try {
       const user = getUserByToken(req.headers.authorization)
 
-      const { title = '' } =  req.body
-  
-      if (!title) {
-        const groups = await Group
-          .find({ owner: user.id })
-          .populate('owner', ['username'])
-          .sort({ 'dateCreate': -1 }) 
-          .limit(15)
-          
-        return res.status(200).json(groups)
-      }
-  
+      const limit = 10
+
+      const { 
+        title = '',
+        skip = 0
+      } = req.body
+
       const groups = await Group
         .find({ 
           owner: user.id, 
           title: { $regex: new RegExp(title, 'i') } 
         })
         .populate('owner', ['username'])
-        .sort({ 'dateCreate': -1 }) 
+        .sort({ 'dateCreate': -1 })
+        .skip(skip)
+        .limit(limit)
 
-      return res.status(200).json(groups) 
+      const groupsAmount = await Group
+        .find({ 
+          owner: user.id, 
+          title: { $regex: new RegExp(title, 'i') } 
+        })
+        .count()
+
+      return res.status(200).json( { groups, groupsAmount, limit } ) 
     } catch (error) {
       console.log(error)
       return res.status(400).json({message: 'Server group functional error. Try to check your entries.'})

@@ -405,8 +405,6 @@ class UserController {
     if (!mongoose.isValidObjectId(id)) 
       return res.status(403).json({ message: 'Not valid ID of user.' })
 
-    const user = await User.findOne({ _id: id })
-
     const limit = 5
 
     const match = { 
