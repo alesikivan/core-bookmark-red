@@ -10,7 +10,14 @@ module.exports = function (req, res, next) {
       return res.status(403).json({ message: 'User not registered!' })
     }
     
-    const decoded = jwt.verify(token, process.env.SECRET_KEY)
+    const decoded = jwt.verify(token, process.env.SECRET_KEY, (err) => {
+      if (err) {
+        return res.status(401).json({
+          message: 'Session time out. Please login again.'
+        }) 
+      }
+    })
+
     req.user = decoded
     
     next()
