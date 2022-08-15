@@ -13,4 +13,6 @@ router.post('/default/find', authMiddleware, controller.findDefalutResources)
 
 router.post('/shared/find', controller.findSharedResources)
 
+router.post('/bert/shared/find', controller.findSharedResourcesByBERT)
+
 module.exports = router

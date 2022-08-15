@@ -2,6 +2,8 @@ const { validationResult } = require('express-validator')
 const { getUserByToken } = require('../helpers/functions')
 const Resource = require('../models/Resource')
 
+const axios = require('axios').default;
+
 class SearchController {
   async getDefaultResources(req, res) {
     try {
@@ -161,6 +163,42 @@ class SearchController {
         .populate('owner', ['username'])
         .sort(sorting)
         .limit(50)
+
+      return res.status(200).json( resources )
+
+    } catch (e) {
+      console.log(e)
+      return res.status(400).json({message: 'Server resource functional error. Try to check your entries.'})
+    }
+  }
+
+  async findSharedResourcesByBERT(req, res) {
+    try {
+      let user = {}
+      
+      if (req.headers.authorization)
+        user = getUserByToken(req.headers.authorization)
+
+      const {
+        text = '',
+        includeMy = false,
+      } = req.body
+
+      const find = { $match: { access: 'public' } }
+
+      if (!includeMy) {
+        find['$match'].owner = { $not: { $eq: user.id } }
+      }
+
+      const response = await axios
+        .get(`${process.env.PYTHON_SERVER}/search?query=${text}`)
+      
+      const ids = response.data.map(n => String(n))
+
+      find['$match'].bert_id = { $in: ids }
+
+      const resources = await Resource
+        .aggregate([ find, { $limit : 50 } ])
 
       return res.status(200).json( resources )
 
