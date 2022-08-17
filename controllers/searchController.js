@@ -1,6 +1,10 @@
 const { validationResult } = require('express-validator')
 const { getUserByToken } = require('../helpers/functions')
+
 const Resource = require('../models/Resource')
+const User = require('../models/User')
+const List = require('../models/List')
+const Group = require('../models/Group')
 
 const axios = require('axios').default;
 
@@ -199,6 +203,10 @@ class SearchController {
 
       const resources = await Resource
         .aggregate([ find, { $limit : 50 } ])
+
+      await List.populate(resources, {path: "lists",  select:  {_id: 1, title: 1, resources: 1}});
+      await Group.populate(resources, {path: "groups",  select:  {_id: 1, title: 1, resources: 1}});
+      await User.populate(resources, {path: "owner",  select:  {_id: 1, username: 1}});
 
       return res.status(200).json( resources )
 
