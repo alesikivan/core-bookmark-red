@@ -202,11 +202,17 @@ class SearchController {
       find['$match'].bert_id = { $in: ids }
 
       const resources = await Resource
-        .aggregate([ find, { $limit : 50 } ])
+        .aggregate([ 
+          find, 
+          { $limit : 50 }, 
+          { "$addFields" : { "__order" : { "$indexOfArray" : [ ids, "$bert_id" ] } } },
+          { "$sort" : { "__order" : 1 } },
+          { "$project": {"__order":0}} 
+        ])
 
-      await List.populate(resources, {path: "lists",  select:  {_id: 1, title: 1, resources: 1}});
-      await Group.populate(resources, {path: "groups",  select:  {_id: 1, title: 1, resources: 1}});
-      await User.populate(resources, {path: "owner",  select:  {_id: 1, username: 1}});
+      // await List.populate(resources, {path: "lists",  select:  {_id: 1, title: 1, resources: 1}})
+      // await Group.populate(resources, {path: "groups",  select:  {_id: 1, title: 1, resources: 1}})
+      await User.populate(resources, {path: "owner",  select:  {_id: 1, username: 1}})
 
       return res.status(200).json( resources )
 
