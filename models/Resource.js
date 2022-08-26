@@ -4,6 +4,7 @@ const Resource = new Schema({
   link: {type: String, required: true},
   access: {type: String, required: true, default: 'public'},
   description: {type: String, default: ''},
+  bert_id: {type: Number, default: '-1'},
   tags: {type: [String], default: []},
   groups: {type: [Schema.Types.ObjectId], ref: 'Group', default: []},
   lists: {type: [Schema.Types.ObjectId], ref: 'List', default: []},

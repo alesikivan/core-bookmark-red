@@ -197,7 +197,7 @@ class SearchController {
       const response = await axios
         .get(`${process.env.PYTHON_SERVER}/search?query=${text}`)
       
-      const ids = response.data.map(n => String(n))
+      const {data: ids } = response
 
       find['$match'].bert_id = { $in: ids }
 
