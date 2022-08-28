@@ -218,7 +218,20 @@ class SearchController {
 
     } catch (e) {
       console.log(e)
-      return res.status(400).json({message: 'Server resource functional error. Try to check your entries.'})
+      return res.status(400).json({message: 'Can not find the bookmarks. Please try later.'})
+    }
+  }
+  
+  async smartSearch(req, res) {
+    try {
+      const {cluster = 10000 } = req.body
+
+      console.log(cluster)
+
+      return res.status(200).json( [] )
+    } catch (e) {
+      console.log(e)
+      return res.status(400).json({message: 'Can not load the map. Please try later.'})
     }
   }
 }
