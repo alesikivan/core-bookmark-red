@@ -5,6 +5,9 @@ const Resource = require('../models/Resource')
 const User = require('../models/User')
 const List = require('../models/List')
 const Group = require('../models/Group')
+const Level = require('../models/Level')
+const Cluster = require('../models/Cluster')
+const Hierarchical = require('../models/Hierarchical')
 
 const axios = require('axios').default;
 
@@ -179,9 +182,9 @@ class SearchController {
   async findSharedResourcesByBERT(req, res) {
     try {
       let user = {}
-      
+
       if (req.headers.authorization)
-        user = getUserByToken(req.headers.authorization)
+        user = getUserByToken(req.headers.authorization, res)
 
       const {
         text = '',
@@ -190,8 +193,9 @@ class SearchController {
 
       const find = { $match: { access: 'public' } }
 
-      if (!includeMy) {
-        find['$match'].owner = { $not: { $eq: user.id } }
+      if (user) {
+        if (!includeMy) 
+          find['$match'].owner = { $not: { $eq: user.id } }
       }
 
       const response = await axios
@@ -199,13 +203,13 @@ class SearchController {
       
       const {data: ids } = response
 
-      find['$match'].bert_id = { $in: ids }
+      find['$match'].bertId = { $in: ids }
 
       const resources = await Resource
         .aggregate([ 
           find, 
           { $limit : 50 }, 
-          { "$addFields" : { "__order" : { "$indexOfArray" : [ ids, "$bert_id" ] } } },
+          { "$addFields" : { "__order" : { "$indexOfArray" : [ ids, "$bertId" ] } } },
           { "$sort" : { "__order" : 1 } },
           { "$project": {"__order":0}} 
         ])
@@ -224,14 +228,145 @@ class SearchController {
   
   async smartSearch(req, res) {
     try {
-      const {cluster = 10000 } = req.body
+      const { cluster = 10000 } = req.body
 
-      console.log(cluster)
+      const doublePartition = await Level.find({ parent: cluster })
 
-      return res.status(200).json( [] )
+      if (doublePartition.length === 2) {
+        let parents = doublePartition.map(cluster => cluster.child)
+        let children = await Level.find({ parent: parents })
+    
+        if (children.length < 4) {
+          const clusters = await Cluster.find({ bertId: parents })
+          return res.status(200).json({ clusters })
+        }
+    
+        children = children.map(cluster => cluster.child)
+    
+        for (let i = 0; i < children.length; i++) {
+          let id = children[i]
+          let inheritance = await Level.find({ parent: id })
+    
+          if (inheritance.length === 2) {
+            let ids = inheritance.map(cluster => cluster.child)
+
+            // Get 3 parents and 2 child of 4 parent
+            const _ids = [...children.filter(n => n !== id), ...ids]
+            
+            const clusters = await Cluster.find({ bertId: _ids })
+
+            // const resourceIds = await Hierarchical.distinct('document', {cluster: {$in: [10005, 10006, 10004] }})
+            // const resources = await Resource.find({ bertId: resourceIds }, { coordinates: 1, bertId: 1 })
+
+            return res.status(200).json({ clusters, coordinates: [] })
+          }
+        }
+
+        const clusters = await Cluster.find({ bertId: cluster })
+        return res.status(200).json({ clusters })
+      }
+
+      // const hierarchicals = await Hierarchical.find({ cluster }, { document: 1, _id: 0})
+      
+      return res.status(200).json({ clusters: [] })
     } catch (e) {
       console.log(e)
       return res.status(400).json({message: 'Can not load the map. Please try later.'})
+    }
+  }
+  
+  async rectangleSearch(req, res) {
+    try {
+      const {
+        lambda: minLambda = 0,
+        coordinates: {
+          x1 = 0, // Left top
+          y1 = 0, // Left top
+          x2 = 0, // Right bottom
+          y2 = 0 // Right bottom
+        }
+      } = req.body
+
+      // const clusters = await Cluster.find({
+      //   $and: [
+      //     { centroid_x: { $lt: x2 } },
+      //     { centroid_x: { $gt: x1 } },
+      //     { centroid_y: { $lt: y1 } },
+      //     { centroid_y: { $gt: y2 } },
+      //   ]
+      // })
+
+      // Get unanomaly resources by the rectangle
+      const resourceIds = await Resource
+        .distinct('bertId', {
+          $and: [
+            { 'coordinates.x': { $lt: x2 } },
+            { 'coordinates.x': { $gt: x1 } },
+            { 'coordinates.y': { $lt: y1 } },
+            { 'coordinates.y': { $gt: y2 } },
+          ],
+          anomaly: false
+        })
+      
+      // List of lambds
+      let lambda = await Hierarchical.distinct('lambda', { document: { $in: resourceIds } } )
+
+      const maxLambda = Math.max(...lambda)
+
+      const records = await Hierarchical.aggregate([
+        {
+          $match: {
+            lambda: { $lt: maxLambda },
+            lambda: { $gt: minLambda },
+            document: { $in: resourceIds },
+          }
+        },
+        {
+          $group: {
+            '_id': '$document',
+            'lambda': { $max: '$lambda' },
+            'cluster': { $max: '$cluster' },
+          }
+        }
+      ])
+
+      // Get clusters ids
+      let clusters = records.map(c => c.cluster)
+
+      // Unique clusters ids
+      clusters = Array.from( new Set(clusters) )
+
+      //  Filter first 3 common cluster ids
+      let unique = clusters.filter(u => ![10000, 10001, 10002].includes(u))
+
+      // Get 5 first cluster ids
+      unique = unique.slice(0, 5)
+
+      const avgLambda = await Hierarchical
+        .aggregate([
+          {
+            $match: { cluster: { $in: unique } }
+          },
+          {
+            $group: {
+              _id: null,
+              avg_lambda: { $avg: "$lambda" }
+            }
+          }
+        ])
+
+      console.log(avgLambda[0].avg_lambda)
+
+      const uniqueClusters = await Cluster.find({ bertId: unique })
+      
+      return res.status(200).json({ 
+        clusters: uniqueClusters, 
+        lambda: avgLambda[0].avg_lambda,
+        coordinates: []
+      })
+    } catch (e) {
+      console.log(e)
+      return res.status(400).json({message: 'Error with rectangle search.'})
     }
   }
 }

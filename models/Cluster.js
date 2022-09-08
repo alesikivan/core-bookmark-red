@@ -1,7 +1,7 @@
 const { Schema, model } = require('mongoose')
 
 const Cluster = new Schema({
-  bert_id: {type: Number, require: true},
+  bertId: {type: Number, require: true},
   keywords: {type: [String], default: []},
   centroid_x: {type: Number, require: true},
   centroid_y: {type: Number, require: true},

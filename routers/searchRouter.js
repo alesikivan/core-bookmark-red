@@ -15,6 +15,8 @@ router.post('/shared/find', controller.findSharedResources)
 
 router.post('/bert/shared/find', controller.findSharedResourcesByBERT)
 
-router.post('/smart', controller.smartSearch)
+router.post('/smart', authMiddleware, controller.smartSearch)
+
+router.post('/rectangle', authMiddleware, controller.rectangleSearch)
 
 module.exports = router
