@@ -274,95 +274,61 @@ class SearchController {
       return res.status(400).json({message: 'Can not load the map. Please try later.'})
     }
   }
-  
+
   async rectangleSearch(req, res) {
     try {
       const {
-        lambda: minLambda = 0,
-        coordinates: {
-          x1 = 0, // Left top
-          y1 = 0, // Left top
-          x2 = 0, // Right bottom
-          y2 = 0 // Right bottom
-        }
+        x1 = 0, // Left bottom
+        y1 = 0, // Left bottom
+        x2 = 0, // Right top
+        y2 = 0 // Right top
       } = req.body
 
-      // const clusters = await Cluster.find({
-      //   $and: [
-      //     { centroid_x: { $lt: x2 } },
-      //     { centroid_x: { $gt: x1 } },
-      //     { centroid_y: { $lt: y1 } },
-      //     { centroid_y: { $gt: y2 } },
-      //   ]
-      // })
+      // [minX, minY, maxX, maxY]
+      const rect = [+x1, +y1, +x2, +y2]
 
-      // Get unanomaly resources by the rectangle
-      const resourceIds = await Resource
-        .distinct('bertId', {
-          $and: [
-            { 'coordinates.x': { $lt: x2 } },
-            { 'coordinates.x': { $gt: x1 } },
-            { 'coordinates.y': { $lt: y1 } },
-            { 'coordinates.y': { $gt: y2 } },
-          ],
-          anomaly: false
-        })
+      let query = (rect.every(n => n === 0)) ? 
+        `${process.env.PYTHON_SERVER}/visualizer/find/clusters`
+        :
+        `${process.env.PYTHON_SERVER}/visualizer/find/clusters?rect=${rect.join(',')}`
       
-      // List of lambds
-      let lambda = await Hierarchical.distinct('lambda', { document: { $in: resourceIds } } )
+      const response = await axios.get(query)
+      
+      const { 
+        clusters = [], 
+        minX = 0, 
+        maxX = 0, 
+        minY = 0, 
+        maxY = 0,
+        // coordinates = []
+      } = response.data
 
-      const maxLambda = Math.max(...lambda)
+      const clustersData = await Cluster.find({ bertId: clusters })
+      
+      const sortedClusters = clusters.filter(n => n >= 10000)
+      let coordinatesData = []
 
-      const records = await Hierarchical.aggregate([
-        {
-          $match: {
-            lambda: { $lt: maxLambda },
-            lambda: { $gt: minLambda },
-            document: { $in: resourceIds },
-          }
-        },
-        {
-          $group: {
-            '_id': '$document',
-            'lambda': { $max: '$lambda' },
-            'cluster': { $max: '$cluster' },
-          }
-        }
-      ])
-
-      // Get clusters ids
-      let clusters = records.map(c => c.cluster)
-
-      // Unique clusters ids
-      clusters = Array.from( new Set(clusters) )
-
-      //  Filter first 3 common cluster ids
-      let unique = clusters.filter(u => ![10000, 10001, 10002].includes(u))
-
-      // Get 5 first cluster ids
-      unique = unique.slice(0, 5)
-
-      const avgLambda = await Hierarchical
-        .aggregate([
+      if (sortedClusters.length < 3) {
+        const coordinates = await Hierarchical.distinct('document', { sortedClusters })
+  
+        coordinatesData = await Resource.find(
           {
-            $match: { cluster: { $in: unique } }
-          },
-          {
-            $group: {
-              _id: null,
-              avg_lambda: { $avg: "$lambda" }
-            }
-          }
-        ])
-
-      console.log(avgLambda[0].avg_lambda)
-
-      const uniqueClusters = await Cluster.find({ bertId: unique })
+            bertId: coordinates,
+            $and: [
+              { 'coordinates.x': { $gt: minX } },
+              { 'coordinates.x': { $lt: maxX } },
+              { 'coordinates.y': { $gt: minY } },
+              { 'coordinates.y': { $lt: maxY } },
+            ]
+          }, 
+          { coordinates: 1, tags: 1, bertId: 1, link: 1 }
+        )
+      }
       
       return res.status(200).json({ 
-        clusters: uniqueClusters, 
-        lambda: avgLambda[0].avg_lambda,
-        coordinates: []
+        clusters: clustersData,
+        viewBox: [minX, minY, maxX, maxY],
+        coordinates: coordinatesData
       })
     } catch (e) {
       console.log(e)
