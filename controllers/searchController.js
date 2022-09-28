@@ -335,6 +335,40 @@ class SearchController {
       return res.status(400).json({message: 'Error with rectangle search.'})
     }
   }
+
+  async getRandomCoordinatesByRect(req, res) {
+    try {
+      const {
+        minX = 0, 
+        maxX = 0, 
+        minY = 0, 
+        maxY = 0,
+        amount = 1000
+      } = req.body
+
+      const coordinates = await Resource
+        .aggregate([
+          { 
+            $match: {
+              $and: [
+                { 'coordinates.x': { $gt: minX } },
+                { 'coordinates.x': { $lt: maxX } },
+                { 'coordinates.y': { $gt: minY } },
+                { 'coordinates.y': { $lt: maxY } },
+              ]
+            }
+          },
+          {
+            $sample: { size: amount } 
+          }
+        ])
+      
+      return res.status(200).json(coordinates)
+    } catch (e) {
+      console.log(e)
+      return res.status(400).json({message: 'Error with rectangle search.'})
+    }
+  }
 }
 
 module.exports = new SearchController()

@@ -19,4 +19,6 @@ router.post('/smart', authMiddleware, controller.smartSearch)
 
 router.post('/rectangle', authMiddleware, controller.rectangleSearch)
 
+router.post('/random/coordinates', authMiddleware, controller.getRandomCoordinatesByRect)
+
 module.exports = router
