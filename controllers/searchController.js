@@ -300,28 +300,22 @@ class SearchController {
         maxX = 0, 
         minY = 0, 
         maxY = 0,
-        // coordinates = []
+        coordinates = []
       } = response.data
 
       const clustersData = await Cluster.find({ bertId: clusters })
       
-      const sortedClusters = clusters.filter(n => n >= 10000)
       let coordinatesData = []
 
-      if (sortedClusters.length < 3) {
-        const coordinates = await Hierarchical.distinct('document', { sortedClusters })
+      console.log(clusters)
+
+      if (clusters.length < 5) {
   
         coordinatesData = await Resource.find(
           {
-            bertId: coordinates,
-            $and: [
-              { 'coordinates.x': { $gt: minX } },
-              { 'coordinates.x': { $lt: maxX } },
-              { 'coordinates.y': { $gt: minY } },
-              { 'coordinates.y': { $lt: maxY } },
-            ]
+            bertId: coordinates
           }, 
-          { coordinates: 1, tags: 1, bertId: 1, link: 1 }
+          { coordinates: 1, tags: 1, bertId: 1, link: 1, title: 1 }
         )
       }
       

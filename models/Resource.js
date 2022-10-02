@@ -4,6 +4,7 @@ const Resource = new Schema({
   link: {type: String, required: true},
   access: {type: String, required: true, default: 'public'},
   description: {type: String, default: ''},
+  title: {type: String, default: ''},
   bertId: {type: Number},
   coordinates: {
     x: Number,
