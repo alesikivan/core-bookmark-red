@@ -307,9 +307,9 @@ class SearchController {
       
       let coordinatesData = []
 
-      console.log(clusters)
+      const treshold = 1000
 
-      if (clusters.length < 5) {
+      if (coordinates.length <= treshold) {
   
         coordinatesData = await Resource.find(
           {
