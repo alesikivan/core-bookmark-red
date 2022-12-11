@@ -1,5 +1,5 @@
 const { validationResult } = require('express-validator')
-
+const { default: mongoose } = require('mongoose')
 const { getUserByToken } = require('../helpers/functions')
 const List = require('../models/List')
 const Resource = require('../models/Resource')
@@ -124,17 +124,12 @@ class ListController {
         return res.status(400).json({ message: `You do not have access to delete it` })
       }
   
-      // Delete all lists in resources which contain them
-      list.resources.forEach(async _id => {
-        const resource = await Resource.findOne({ _id })
-  
-        await Resource.updateOne(
-          { _id: String(_id), owner: user.id },
-          { $set: { 
-            lists: resource.lists.filter(list => list != list._id)
-          } }
-        )
-      })
+      // Delete list in resources
+      await Resource.updateMany(
+        { owner: user.id },
+        { 
+          $pull: { lists: mongoose.Types.ObjectId(list._id) } 
+        })
   
       await List.deleteOne({ _id: String(list._id) })
   

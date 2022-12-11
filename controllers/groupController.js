@@ -476,7 +476,8 @@ class GroupController {
       }
   
       // Delete the group in resources
-      await Resource.updateMany({},
+      await Resource.updateMany(
+        { owner: user.id },
         { 
           $pull: { groups: mongoose.Types.ObjectId(group._id) } 
         })
