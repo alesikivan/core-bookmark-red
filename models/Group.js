@@ -12,6 +12,7 @@ const Group = new Schema({
   members: {type: [Schema.Types.ObjectId], default: []},
   broadcasters: {type: [Schema.Types.ObjectId], default: []},
   admins: {type: [Schema.Types.ObjectId], default: []},
+  moderations: {type: [Schema.Types.ObjectId], ref: 'User', default: []},
   dateCreate: {type: Date, default: new Date()},
   dateUpdate: {type: Date, default: new Date()},
 })

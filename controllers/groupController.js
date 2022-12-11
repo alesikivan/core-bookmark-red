@@ -3,6 +3,8 @@ const { default: mongoose } = require('mongoose')
 
 const { getUserByToken } = require('../helpers/functions')
 const Group = require('../models/Group')
+const User = require('../models/User')
+const Moderation = require('../models/Moderation')
 const Resource = require('../models/Resource')
 const Role = require('../models/Role')
 
@@ -41,7 +43,8 @@ class GroupController {
         defaultRole,
         groupPhoto,
         keywords,
-        owner: user.id
+        owner: user.id,
+        dateCreate: new Date()
       })
 
       await group.save()
@@ -207,8 +210,6 @@ class GroupController {
     }
   }
 
-
-
   async groupFinder(req, res) {
     try {
       const user = getUserByToken(req.headers.authorization)
@@ -221,18 +222,87 @@ class GroupController {
       } = req.body
 
       const query = { 
-        owner: { $not: { $eq: user.id } },
+        // owner: { $not: { $eq: user.id } },
         title: { $regex: new RegExp(title, 'i') },
-        accessLevel: { $in: ['public']} ,
-        // accessLevel: { $in: ['public', 'request']} ,
+        accessLevel: { $in: ['public', 'request']} ,
       }
 
+      const mongooseId = mongoose.Types.ObjectId(user.id)
+
       const groups = await Group
-        .find(query)
-        .populate('owner', ['username'])
-        .sort({ 'dateCreate': -1 })
-        .skip(skip)
-        .limit(limit)
+        .aggregate(
+          [
+            { $match: query },
+            // Check the 'moderations' field is existing
+            { $set: {
+                moderations: {
+                  $cond: {
+                    if: {
+                      $lte: ['$moderations', null]
+                    },
+                    then: [],
+                    else: '$moderations'
+                  }
+                }
+              }
+            },
+            {
+              $addFields: { 
+                // To show true buttons on group finder
+                userPresence: {
+                  $switch: {
+                    branches: [
+                      { 
+                        case: { $in: [mongooseId, ['$owner']] },
+                        then: 'owner' 
+                      },
+                      { 
+                        case: { $in: [mongooseId, '$moderations'] },
+                        then: 'pending' 
+                      },
+                      { 
+                        case: {
+                          $or: [
+                            { $in: [mongooseId, '$broadcasters'] },
+                            { $in: [mongooseId, '$admins'] },
+                            { $in: [mongooseId, '$members'] }
+                          ]
+                        },
+                        then: 'member' 
+                      }
+                    ],
+                    default: 'new'
+                  }
+                },
+                // Flag to redirect on group finder
+                permission: {
+                  $switch: {
+                    branches: [
+                      { 
+                        case: {
+                          $or: [
+                            { $in: ['public', ['$accessLevel']] },
+                            { $in: [mongooseId, ['$owner']] },
+                            { $in: [mongooseId, '$broadcasters'] },
+                            { $in: [mongooseId, '$admins'] },
+                            { $in: [mongooseId, '$members'] }
+                          ]
+                        },
+                        then: 'enable' 
+                      },
+                    ],
+                    default: 'disable'
+                  }
+                }
+              }
+            },
+            { $sort : { dateCreate : -1, } },
+            { $project : { admins : 0 , broadcasters : 0, members: 0 } },
+            { $limit : limit },
+            { $skip : skip }
+          ]
+        )
+      await User.populate(groups, { path: "owner",  select:  {_id: 1, username: 1} });
 
       const groupsAmount = await Group
         .find(query)
@@ -279,7 +349,119 @@ class GroupController {
       return res.status(400).json({message: 'Server group functional error. Try to check your entries.'})
     }
   }
+  
+  async followGroupByRequest(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
 
+      const { 
+        _id = '', // group id
+      } = req.body
+
+      const assigneeId = user.id
+      
+      if (!mongoose.isValidObjectId(_id)) {
+        return res.status(403).json({ message: 'Not valid ID of group.' })
+      }
+
+      const requestGroup = await Group.findOne({ _id, accessLevel: 'request' })
+
+      if (!requestGroup) {
+        return res.status(403).json({ message: 'Not valid group status. Reload the page.' })
+      }
+
+      if (!mongoose.isValidObjectId(assigneeId)) {
+        return res.status(403).json({ message: 'Not valid ID of assignee.' })
+      }
+      
+      // Update group moderation with new user
+      const group = await Group.findOneAndUpdate(
+        { _id },
+        { $push: { moderations: mongoose.Types.ObjectId(assigneeId) } },
+        { $set: { 
+          dateUpdate: new Date()
+        } }
+      )
+  
+      if (!group) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it!' })
+      }
+
+      const assignee = await User.findOne({ _id: assigneeId })
+
+      const message = `The user with name <a target="_blank" href="${process.env.CLIENT_URL}/user/view/${assignee._id}">${assignee.username}</a> wants to join your group <b>${group.title}</b>.`
+
+      // Add a moderation to the list
+      const moderation = new Moderation({
+        assignee: assigneeId,
+        reviewer: group.owner,
+        subject: group._id,
+        status: 'pending',
+        message,
+        type: 'request-to-protected-group',
+        dateCreate: new Date(),
+        dateUpdate: new Date()
+      })
+
+      await moderation.save()
+
+      return res.status(200).json( { message: 'Your group request has been poisoned!'} ) 
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json( { message: 'Server group functional error. Try to check your entries.'} )
+    }
+  }
+
+  async cancelFollowGroupByRequest(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const { 
+        _id = '', // group id
+      } = req.body
+
+      const assigneeId = user.id
+      
+      if (!mongoose.isValidObjectId(_id)) {
+        return res.status(403).json({ message: 'Not valid ID of group.' })
+      }
+
+      const requestGroup = await Group.findOne({ _id, accessLevel: 'request' })
+
+      if (!requestGroup) {
+        return res.status(403).json({ message: 'Not valid group status. Reload the page.' })
+      }
+
+      if (!mongoose.isValidObjectId(assigneeId)) {
+        return res.status(403).json({ message: 'Not valid ID of assignee.' })
+      }
+      
+      // Update group moderation with new user
+      const group = await Group.findOneAndUpdate(
+        { _id },
+        {
+          $pull: { moderations: mongoose.Types.ObjectId(assigneeId) }, 
+          $set: { dateUpdate: new Date() } 
+        }
+      )
+  
+      if (!group) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it!' })
+      }
+
+      // Remove a moderation from the list
+      await Moderation.deleteOne({ 
+        assignee: assigneeId,
+        type: 'request-to-protected-group',
+        subject: group._id
+      })
+
+      return res.status(200).json( { message: 'Your group request has been canceled!'} ) 
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json( { message: 'Server group functional error. Try to check your entries.'} )
+    }
+  }
 
   async deleteGroup(req, res) {
     try {

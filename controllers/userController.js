@@ -216,31 +216,39 @@ class UserController {
       if (!mongoose.isValidObjectId(_id)) {
         return res.status(403).json({ message: 'Not valid ID of group.' })
       }
-      
+
       const mongooseUserId = mongoose.Types.ObjectId(user.id)
 
-      const group = await Group
-        .findOne({ 
-          $or: [
-            { _id, owner: user.id  },
-            { _id, accessLevel: 'public' },
-            // { 
-            //   _id, 
-            //   members: { $in: [mongooseUserId] },
-            // },
-            // { _id, broadcasters: { $in: [mongooseUserId] } },
-            // { _id, admin: { $in: [mongooseUserId] } }
-          ]
-        })
-        .populate('owner', ['username'])
-        .populate({
-          path : 'resources',
-          populate : [
-            { path: 'lists' },
-            { path: 'groups' },
-            { path: 'owner' },
-          ]
-        })
+      const request = await Group.findOne({ _id, moderations: { $in: [mongooseUserId] } })
+
+      if (request) {
+        return res.status(403).json({ message: 'Your request <b>to join the group</b> is still pending. Please wait.' })
+      }
+      
+        const group = await Group
+          .findOne({ 
+            _id, 
+            $or: [
+              { owner: mongooseUserId },
+              { accessLevel: 'public' },
+              { members: { $in: [mongooseUserId] } },
+              { broadcasters: { $in: [mongooseUserId] } },
+              { admins: { $in: [mongooseUserId] } },
+            ]
+          }, {
+            members: 0,
+            admins: 0,
+            broadcasters: 0
+          })
+          .populate('owner', ['username'])
+          .populate({
+            path : 'resources',
+            populate : [
+              { path: 'lists' },
+              { path: 'groups' },
+              { path: 'owner' },
+            ]
+          })
 
       if (!group) {
         return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })

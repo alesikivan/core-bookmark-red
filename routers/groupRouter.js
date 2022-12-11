@@ -35,4 +35,8 @@ router.post('/cancel-follow', authMiddleware, controller.cancelFollow)
 
 router.delete('/delete/:id', authMiddleware, controller.deleteGroup)
 
+router.post('/follow-group-by-request', authMiddleware, controller.followGroupByRequest)
+
+router.post('/cancel-follow-group-by-request', authMiddleware, controller.cancelFollowGroupByRequest)
+
 module.exports = router

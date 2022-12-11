@@ -293,7 +293,7 @@ class SearchController {
         `${process.env.PYTHON_SERVER}/visualizer/find/clusters?rect=${rect.join(',')}`
       
       const response = await axios.get(query)
-      
+
       const { 
         clusters = [], 
         minX = 0, 

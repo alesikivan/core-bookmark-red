@@ -66,7 +66,8 @@ class ResourceController {
         groups,
         lists,
         exploreLater,
-        owner: user.id
+        owner: user.id,
+        dateCreate: new Date()
       })
   
       await resource.save()
