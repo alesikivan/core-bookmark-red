@@ -349,6 +349,45 @@ class GroupController {
       return res.status(400).json({message: 'Server group functional error. Try to check your entries.'})
     }
   }
+
+  async findFollowingGroup(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const limit = 10
+
+      const { 
+        title = '',
+        skip = 0
+      } = req.body
+
+      const groups = await Group
+        .find({ 
+          $or: [
+            { members: { $in: [user.id] }, },
+            { broadcasters: { $in: [user.id] }, },
+            { admins: { $in: [user.id] }, }
+          ], 
+          title: { $regex: new RegExp(title, 'i') } 
+        })
+        .populate('owner', ['username'])
+        .sort({ 'dateCreate': -1 })
+        .skip(skip)
+        .limit(limit)
+
+      const groupsAmount = await Group
+        .find({ 
+          owner: user.id, 
+          title: { $regex: new RegExp(title, 'i') } 
+        })
+        .count()
+
+      return res.status(200).json( { groups, groupsAmount, limit } ) 
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json({message: 'Server group functional error. Try to check your entries.'})
+    }
+  }
   
   async followGroupByRequest(req, res) {
     try {

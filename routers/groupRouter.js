@@ -27,6 +27,8 @@ router.get('/get/:id', authMiddleware, controller.getById)
 
 router.post('/find-group', authMiddleware, controller.findGroup)
 
+router.post('/find-following-group', authMiddleware, controller.findFollowingGroup)
+
 router.post('/finder', authMiddleware, controller.groupFinder)
 
 router.post('/set-follow', authMiddleware, controller.followGroup)
