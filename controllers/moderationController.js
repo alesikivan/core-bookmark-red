@@ -5,6 +5,7 @@ const { getUserByToken } = require('../helpers/functions')
 const Group = require('../models/Group')
 const User = require('../models/User')
 const Moderation = require('../models/Moderation')
+const Notification = require('../models/Notification')
 
 
 class ModerationController {
@@ -87,9 +88,20 @@ class ModerationController {
     if (!group) {
       return res.status(403).json({ message: 'Group do not exist or you do not have access to it!' })
     }
+    
+    // Send notification to assignee
+    const notificationMessage = `Your request to group <a target="_blank" href="${process.env.CLIENT_URL}/group/view/${group._id}">${group.title}</a> was successfully accepted.`
+    const notification = new Notification({
+      assignee: group.owner,
+      reviewer: moderation.assignee,
+      status: 'fulfilled',
+      message: notificationMessage,
+      type: 'group',
+      dateCreate: new Date(),
+      dateUpdate: new Date()
+    })
 
-    // Send notificaiton to assignee
-
+    await notification.save()
 
     // Remove moderation
     await Moderation.deleteOne({ 
@@ -138,8 +150,19 @@ class ModerationController {
       return res.status(403).json({ message: 'Group do not exist or you do not have access to it!' })
     }
 
-    // Send notificaiton to assignee
+    // Send notification to assignee
+    const notificationMessage = `Your request to join the group ${group.title} was denied.`
+    const notification = new Notification({
+      assignee: group.owner,
+      reviewer: moderation.assignee,
+      status: 'rejected',
+      message: notificationMessage,
+      type: 'group',
+      dateCreate: new Date(),
+      dateUpdate: new Date()
+    })
 
+    await notification.save()
 
     // Remove moderation
     await Moderation.deleteOne({ 

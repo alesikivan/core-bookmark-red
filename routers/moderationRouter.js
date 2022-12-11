@@ -11,6 +11,4 @@ router.post('/confirm-group-join', authMiddleware, controller.confirmGroupJoin)
 
 router.post('/cancel-group-join', authMiddleware, controller.cancelGroupJoin)
 
-// router.post('/delete', authMiddleware, controller.deleteModeration)
-
 module.exports = router
