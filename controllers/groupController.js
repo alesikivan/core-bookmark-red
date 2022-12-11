@@ -475,17 +475,14 @@ class GroupController {
         return res.status(400).json({ message: `Can not find group to delete` })
       }
   
-      // Delete all groups in resources which contain them
-      group.resources.forEach(async _id => {
-        const resource = await Resource.findOne({ _id, owner: user.id })
-  
-        await Resource.updateOne(
-          { _id: String(_id), owner: user.id },
-          { $set: { 
-            groups: resource.groups.filter(group => group != group._id)
-          } }
-        )
-      })
+      // Delete the group in resources
+      await Resource.updateMany({},
+        { 
+          $pull: { groups: mongoose.Types.ObjectId(group._id) } 
+        })
+
+      // Delete all moderations where the group is subject
+      await Moderation.deleteMany({ subject: group._id })
   
       await Group.deleteOne({ _id: String(group._id) })
   

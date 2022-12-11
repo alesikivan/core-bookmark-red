@@ -40,6 +40,7 @@ class ResourceController {
       }
   
       // Set rating to tag or create in global Tag collection
+      // Optimize later
       tags.forEach(async tag => {
         const exist = await Tag.findOne({ title: tag })
   
@@ -72,23 +73,15 @@ class ResourceController {
   
       await resource.save()
   
-      // Save resources to group
-      const newGroups = await Group.find({ _id: groups, owner: user.id })
-      newGroups.forEach(async group => {
-        await Group.updateOne(
-          { _id: String(group._id), owner: user.id },
-          { $set: { resources: [...group.resources, resource._id] } }
-        )
-      })
+      // Save resource to groups
+      await Group.updateMany(
+        { _id: { $in: groups } },
+        { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
   
       // Save resources to list
-      const newLists = await List.find({ _id: lists, owner: user.id })
-      newLists.forEach(async list => {
-        await List.updateOne(
-          { _id: String(list._id), owner: user.id },
-          { $set: { resources: [...list.resources, resource._id] } }
-        )
-      })
+      await List.updateMany(
+        { _id: { $in: lists } },
+        { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
   
       return res.status(200).json({ resource, message: 'Resource was successfully created!' }) 
     } catch (error) {
@@ -113,27 +106,13 @@ class ResourceController {
         return res.status(400).json({ message: `You do not have access to delete it` })
       }
 
-      // Delete in all groups
-      const groups = await Group.find({ _id: resource.groups, owner: user.id })
-      groups.forEach(async group => {
-        await Group.updateOne(
-          { _id: String(group._id), owner: user.id },
-          { $set: { 
-            resources: group.resources.filter(resId => String(resId) != String(resource._id))
-          } }
-        )
-      })
+      // Delete resources in groups
+      await Group.updateMany({},
+        { $pull: { resources: mongoose.Types.ObjectId(resource._id) } })
 
-      // Delete in all lists
-      const lists = await List.find({ _id: resource.lists, owner: user.id })
-      lists.forEach(async list => {
-        await List.updateOne(
-          { _id: String(list._id), owner: user.id },
-          { $set: { 
-            resources: list.resources.filter(resId => String(resId) != String(resource._id))
-          } }
-        )
-      })
+      // Delete resources in lists
+      await List.updateMany({},
+        { $pull: { resources: mongoose.Types.ObjectId(resource._id) } })
 
       await Resource.deleteOne({ _id: String(resource._id), owner: user.id })
   
@@ -234,53 +213,39 @@ class ResourceController {
           exploreLater,
           dateUpdate: new Date()
         } }
-      )
-  
-      // Remove all previous resources array from groups
-      const previouGroups = await Group.find({ _id: previourResource.groups, owner: user.id })
-      previouGroups.forEach(async group => {
-        await Group.updateOne(
-          { _id: String(group._id), owner: user.id },
-          { $set: { 
-            resources: group.resources.filter(res => {
-              return String(res) != String(previourResource._id)
-            })
-          } }
-        )
-      })
+      )      
+
+      // Remove all previous resources from groups
+      await Group.updateMany(
+        { 
+          _id: { $in: previourResource.groups }, 
+          owner: user.id 
+        },
+        { $pull: { resources: mongoose.Types.ObjectId(resource._id) } })
 
       // Remove all previous resources array from listss
-      const previousLists = await List.find({ _id: previourResource.lists, owner: user.id })
-      previousLists.forEach(async list => {
-        await List.updateOne(
-          { _id: String(list._id), owner: user.id },
-          { $set: { 
-            resources: list.resources.filter(res => String(res) != String(previourResource._id))
-          } }
-        )
-      })
+      await List.updateMany(
+        { 
+          _id: { $in: previourResource.lists }, 
+          owner: user.id 
+        },
+        { $pull: { resources: mongoose.Types.ObjectId(resource._id) } })
      
       // Add all new resources array to groups
-      const currentGroups = await Group.find({ _id: groups, owner: user.id })
-      currentGroups.forEach(async group => {
-        await Group.updateOne(
-          { _id: String(group._id), owner: user.id },
-          { $set: { 
-            resources: [...group.resources, resource._id]
-          } }
-        )
-      })
-      
+      await Group.updateMany(
+        { 
+          _id: { $in: groups }, 
+          owner: user.id 
+        },
+        { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
+
       // Add all new resources array to lists
-      const currentLists = await List.find({ _id: lists, owner: user.id })
-      currentLists.forEach(async list => {
-        await List.updateOne(
-          { _id: String(list._id), owner: user.id },
-          { $set: { 
-            resources: [...list.resources, resource._id]
-          } }
-        )
-      })
+      await List.updateMany(
+        { 
+          _id: { $in: lists }, 
+          owner: user.id 
+        },
+        { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
 
       return res.status(200).json({ message: 'Bookmark has been successfully updated.' })
     } catch (e) {
@@ -300,32 +265,28 @@ class ResourceController {
       if (!resources.length) {
         return res.status(400).json({ message: `Can not find resource to delete` })
       }
+      
+      // Delete the resources in the groups
+      await Group.updateMany(
+        { 
+          resources: { $in: ids }, 
+          owner: user.id 
+        },
+        { $pullAll: { resources: ids } })
 
-      for (const resource of resources) {
-        // Delete in all groups
-        const groups = await Group.find({ _id: resource.groups, owner: user.id })
-        groups.forEach(async group => {
-          await Group.updateOne(
-            { _id: String(group._id), owner: user.id },
-            { $set: { 
-              resources: group.resources.filter(resId => String(resId) != String(resource._id))
-            } }
-          )
-        })
-
-        // Delete in all lists
-        const lists = await List.find({ _id: resource.lists, owner: user.id })
-        lists.forEach(async list => {
-          await List.updateOne(
-            { _id: String(list._id), owner: user.id },
-            { $set: { 
-              resources: list.resources.filter(resId => String(resId) != String(resource._id))
-            } }
-          )
-        })
-
-        await Resource.deleteOne({ _id: String(resource._id), owner: user.id }) 
-      }
+      // Delete the resources in the lists
+      await List.updateMany(
+        { 
+          resources: { $in: ids }, 
+          owner: user.id 
+        },
+        { $pullAll: { resources: ids } })
+      
+      // Delete all resources
+      await Resource.deleteMany({ 
+        _id: { $in: ids }, 
+        owner: user.id 
+      }) 
 
       return res.status(200).json({ message: `Resources successfully deleted` }) 
     } catch (error) {
