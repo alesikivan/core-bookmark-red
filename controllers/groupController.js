@@ -146,7 +146,12 @@ class GroupController {
   async getGroupsByUserId (id) {
     try {
       return await Group
-        .find({ owner: id })
+        .find({ owner: id }, {
+          admins: 0,
+          broadcasters: 0,
+          members: 0,
+          moderations: 0
+        })
         .populate('owner', ['username'])
         .sort({ 'dateCreate': -1 }) 
         .limit(15)
@@ -202,6 +207,31 @@ class GroupController {
       if(!group) {
         return res.status(400).json({ message: 'Group not found.' })
       }
+
+      // Unshred all resources from group by deleting user
+      // Refactor optimisation in future
+      const mongooseGroupId = mongoose.Types.ObjectId(_id) 
+      const mongooseUserId = mongoose.Types.ObjectId(user.id) 
+
+      const resources = await Resource.find({
+        owner: { $in: [mongooseUserId] },
+        groups: { $in: [mongooseGroupId] }
+      }, { _id: 1 })
+
+      const resourceIds = resources.map(res => res._id)
+
+      await Group.findOneAndUpdate(
+        { resources: { $in: resourceIds } },
+        { $pullAll: { resources: resourceIds } }
+      )
+
+      await Resource.findOneAndUpdate(
+        {
+          owner: { $in: [mongooseUserId] },
+          groups: { $in: [mongooseGroupId] }
+        },
+        { $pull: { groups: mongooseGroupId }}
+      )
 
       return res.status(200).json({ group, message: 'Successfully cancel of following.' })
     } catch (e) {
@@ -297,9 +327,9 @@ class GroupController {
               }
             },
             { $sort : { dateCreate : -1, } },
-            { $project : { admins : 0 , broadcasters : 0, members: 0 } },
+            { $project : { admins : 0 , broadcasters : 0, members: 0, moderations: 0 } },
+            { $skip : skip },
             { $limit : limit },
-            { $skip : skip }
           ]
         )
       await User.populate(groups, { path: "owner",  select:  {_id: 1, username: 1} });
@@ -307,6 +337,49 @@ class GroupController {
       const groupsAmount = await Group
         .find(query)
         .count()
+
+      return res.status(200).json( { groups, groupsAmount, limit } ) 
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json({message: 'Server group functional error. Try to check your entries.'})
+    }
+  }
+
+  async availibleGroupsFinder(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const limit = 50
+
+      const { 
+        title = '',
+        skip = 0
+      } = req.body
+      
+      const mongooseUserId = mongoose.Types.ObjectId(user.id)
+
+      const query = { 
+        $or: [
+          { owner: mongooseUserId },
+          { broadcasters: { $in: [mongooseUserId] } },
+          { admins: { $in: [mongooseUserId] } },
+        ],
+        title: { $regex: new RegExp(title, 'i') },
+      }
+
+      const groups = await Group
+        .aggregate(
+          [
+            { $match: query },
+            { $sort : { dateCreate : -1, } },
+            { $project : { admins : 0 , broadcasters : 0, members: 0, moderations: 0 } },
+            { $skip : skip },
+            { $limit : limit },
+          ]
+        )
+      await User.populate(groups, { path: "owner",  select:  {_id: 1, username: 1} });
+
+      const groupsAmount = groups.length
 
       return res.status(200).json( { groups, groupsAmount, limit } ) 
     } catch (error) {
@@ -330,6 +403,11 @@ class GroupController {
         .find({ 
           owner: user.id, 
           title: { $regex: new RegExp(title, 'i') } 
+        }, {
+          admins: 0,
+          members: 0,
+          broadcasters: 0,
+          moderations: 0
         })
         .populate('owner', ['username'])
         .sort({ 'dateCreate': -1 })
@@ -369,6 +447,11 @@ class GroupController {
             { admins: { $in: [user.id] }, }
           ], 
           title: { $regex: new RegExp(title, 'i') } 
+        }, {
+          admins: 0,
+          members: 0,
+          broadcasters: 0,
+          moderations: 0
         })
         .populate('owner', ['username'])
         .sort({ 'dateCreate': -1 })
@@ -496,6 +579,223 @@ class GroupController {
       })
 
       return res.status(200).json( { message: 'Your group request has been canceled!'} ) 
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json( { message: 'Server group functional error. Try to check your entries.'} )
+    }
+  }
+
+  async groupMembersFinder(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const limit = 10
+
+      const { 
+        _id = '',
+        title = '',
+        skip = 0,
+        filters = [] // [ 'admin' | 'broadcaster' | 'member' ]
+      } = req.body
+
+      if (!mongoose.isValidObjectId(_id)) {
+        return res.status(403).json({ message: 'Not valid ID of group.' })
+      }
+
+      const group = await Group
+        .findOne({ _id, owner: user.id }, {
+          members: 1,
+          broadcasters: 1,
+          admins: 1
+        })
+        .populate({
+          path: 'members',
+          match: {
+            username: { $regex: new RegExp(title, 'i') },
+          },
+          options: {
+            skip: skip,
+            limit: limit
+          },
+          select:  { _id: 1, username: 1 }
+        })
+        .populate({
+          path: 'broadcasters',
+          match: {
+            username: { $regex: new RegExp(title, 'i') },
+          },
+          options: {
+            skip: skip,
+            limit: limit
+          },
+          select:  { _id: 1, username: 1 }
+        })
+        .populate({
+          path: 'admins',
+          match: {
+            username: { $regex: new RegExp(title, 'i') },
+          },
+          options: {
+            skip: skip,
+            limit: limit
+          },
+          select:  { _id: 1, username: 1 }
+        })
+  
+      if (!group) {
+        return res.status(400).json({ message: `Group do not exist or you do not have access to update it` })
+      }
+
+      // Fitler the group users
+      if (filters.length) {
+        for (const key in group) {
+          if (['members', 'admins', 'broadcasters'].includes(key)) {
+            if (!filters.includes(key)) {
+              group[key] = []
+            }
+          }
+        }
+      }
+
+      const { members = [], admins = [], broadcaster = [] } = group
+
+      const membersAmount = members.length + admins.length + broadcaster.length
+
+      return res.status(200).json({ group, membersAmount, limit }) 
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json({message: 'Server group functional error. Try to check your entries.'})
+    }
+  }
+
+  async setMemberRole(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const { 
+        userId = '', // user id
+        groupId = '', // group id
+        role = '' // 'admins' | 'broadcasters' | 'members',
+      } = req.body
+
+      if (!mongoose.isValidObjectId(groupId)) {
+        return res.status(400).json({ message: 'Not valid ID of group.' })
+      }
+
+      if (!mongoose.isValidObjectId(userId)) {
+        return res.status(400).json({ message: 'Not valid ID of user.' })
+      }
+
+      if (!['admins', 'broadcasters', 'members'].includes(role)) {
+        return res.status(400).json({ message: 'Not valid role for the user.' })
+      }
+
+      const mongooseUserId = mongoose.Types.ObjectId(userId)
+      
+      // Remove previous role 
+      let group = await Group.findOneAndUpdate(
+        {
+          _id: mongoose.Types.ObjectId(groupId),
+          owner: user.id
+        },
+        {
+          $pull: {
+            admins: mongooseUserId,
+            broadcasters: mongooseUserId,
+            members: mongooseUserId,
+          }
+        }
+      )
+  
+      if (!group) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it!' })
+      }
+
+      // Add new role 
+      group = await Group.findOneAndUpdate(
+        {
+          _id: mongoose.Types.ObjectId(groupId),
+          owner: user.id
+        },
+        {
+          $push: { [role]: mongooseUserId }
+        }
+      )
+  
+      if (!group) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it!' })
+      }
+
+      return res.status(200).json( { message: 'User role succefully updated!'} ) 
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json( { message: 'Server group functional error. Try to check your entries.'} )
+    }
+  }
+
+  async removeGroupMember(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const { 
+        userId = '', // user id
+        groupId = '', // group id
+      } = req.body
+
+      if (!mongoose.isValidObjectId(groupId)) {
+        return res.status(400).json({ message: 'Not valid ID of group.' })
+      }
+
+      if (!mongoose.isValidObjectId(userId)) {
+        return res.status(400).json({ message: 'Not valid ID of user.' })
+      }
+
+      const mongooseUserId = mongoose.Types.ObjectId(userId)
+      
+      // Remove previous role 
+      let group = await Group.findOneAndUpdate(
+        {
+          _id: mongoose.Types.ObjectId(groupId),
+          owner: user.id
+        },
+        {
+          $pull: {
+            admins: mongooseUserId,
+            broadcasters: mongooseUserId,
+            members: mongooseUserId,
+          }
+        }
+      )
+  
+      if (!group) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it!' })
+      }
+
+      // Unshred all resources from group by deleting user
+      // Refactor optimisation in future
+      const mongooseGroupId = mongoose.Types.ObjectId(groupId) 
+
+      const resources = await Resource.find({
+        owner: { $in: [mongooseUserId] },
+        groups: { $in: [mongooseGroupId] }
+      }, { _id: 1 })
+
+      const resourceIds = resources.map(res => res._id)
+
+      await Group.findOneAndUpdate(
+        { resources: { $in: resourceIds } },
+        { $pullAll: { resources: resourceIds } }
+      )
+
+      await Resource.findOneAndUpdate(
+        {
+          owner: { $in: [mongooseUserId] },
+          groups: { $in: [mongooseGroupId] }
+        },
+        { $pull: { groups: mongooseGroupId }}
+      )
+
+      return res.status(200).json( { message: 'User succefully deleted!'} ) 
     } catch (error) {
       console.log(error)
       return res.status(400).json( { message: 'Server group functional error. Try to check your entries.'} )

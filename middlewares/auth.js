@@ -4,6 +4,10 @@ module.exports = function (req, res, next) {
   if (req.method === 'OPTION') next()
 
   try {
+    if (!req.headers.authorization) {
+      return res.status(403).json({ message: 'Authorization is invalid!' })
+    }
+
     const token = req.headers.authorization.split(' ')[1]
 
     if (!token) {

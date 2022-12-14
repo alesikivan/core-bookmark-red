@@ -22,6 +22,8 @@ router.get('/get-popular-tags', authMiddleware, controller.getPopularTags)
 
 router.get('/get-group-resources/:id', authMiddleware, controller.getResourcesByGroup)
 
+router.post('/group-resources-finder', authMiddleware, controller.groupResourcesFinder)
+
 router.post('/set-follow', authMiddleware, controller.setFollow)
 
 router.post('/cancel-follow', authMiddleware, controller.cancelFollow)

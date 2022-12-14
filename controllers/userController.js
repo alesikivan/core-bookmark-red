@@ -6,11 +6,12 @@ const Role = require('../models/Role')
 const User = require('../models/User')
 const Tag = require('../models/Tag')
 const Group = require('../models/Group')
+const Resource = require('../models/Resource')
+
 const { getUserByToken } = require('../helpers/functions')
 const groupController = require('./groupController')
 const listController = require('./listController')
 const { default: mongoose } = require('mongoose')
-const Resource = require('../models/Resource')
 
 class UserController {
   async getById(id) {
@@ -90,8 +91,8 @@ class UserController {
         return res.status(403).json({ message: 'Not valid ID of group.' })
       }
 
-      const resourcesAmount = await Resource.find({ owner: _id })
-  
+      const resourcesAmount = await Resource.count({ owner: _id })
+
       const user = await User
         .aggregate(
           [
@@ -110,13 +111,13 @@ class UserController {
             },
             {
               $addFields: { 
-                resourcesAmount: resourcesAmount.length
+                resourcesAmount: resourcesAmount
               }
             },
             { $limit: 1 }
           ]
         )
-  
+
       if (!user) {
         return res.status(403).json({ message: 'User do not exist' })
       }
@@ -213,6 +214,8 @@ class UserController {
 
       const { id: _id } = req.params
 
+      const limit = 50
+
       if (!mongoose.isValidObjectId(_id)) {
         return res.status(403).json({ message: 'Not valid ID of group.' })
       }
@@ -224,37 +227,207 @@ class UserController {
       if (request) {
         return res.status(403).json({ message: 'Your request <b>to join the group</b> is still pending. Please wait.' })
       }
+    
+      const groups = await Group
+        .aggregate([
+          {
+            $match: { 
+              _id: mongoose.Types.ObjectId(_id), 
+              $or: [
+                { owner: mongooseUserId },
+                { accessLevel: 'public' },
+                { members: { $in: [mongooseUserId] } },
+                { broadcasters: { $in: [mongooseUserId] } },
+                { admins: { $in: [mongooseUserId] } },
+              ]
+            } 
+          },
+          {
+            $addFields: {
+              membersAmount: { $size: "$members" },
+              adminsAmount: { $size: "$admins" },
+              broadcastersAmount: { $size: "$broadcasters" },
+              // To show true buttons on group finder
+              userPresence: {
+                $switch: {
+                  branches: [
+                    { 
+                      case: { $in: [mongooseUserId, ['$owner']] },
+                      then: 'owner' 
+                    },
+                    { 
+                      case: { $in: [mongooseUserId, '$moderations'] },
+                      then: 'pending' 
+                    },
+                    { 
+                      case: {
+                        $or: [
+                          { $in: [mongooseUserId, '$broadcasters'] },
+                          { $in: [mongooseUserId, '$admins'] },
+                          { $in: [mongooseUserId, '$members'] }
+                        ]
+                      },
+                      then: 'member' 
+                    }
+                  ],
+                  default: 'new'
+                }
+              },
+              // Flag to redirect on group finder
+              permission: {
+                $switch: {
+                  branches: [
+                    { 
+                      case: {
+                        $or: [
+                          { $in: [mongooseUserId, ['$owner']] },
+                          { $in: [mongooseUserId, '$broadcasters'] },
+                          { $in: [mongooseUserId, '$admins'] },
+                        ]
+                      },
+                      then: 'enable' 
+                    },
+                  ],
+                  default: 'disable'
+                }
+              }
+            }
+          },
+          {
+            $project: {
+              members: 0,
+              admins: 0,
+              broadcasters: 0,
+              moderations: 0
+            }
+          },
+          { $limit: 1 }
+        ])
       
-        const group = await Group
-          .findOne({ 
-            _id, 
-            $or: [
-              { owner: mongooseUserId },
-              { accessLevel: 'public' },
-              { members: { $in: [mongooseUserId] } },
-              { broadcasters: { $in: [mongooseUserId] } },
-              { admins: { $in: [mongooseUserId] } },
-            ]
-          }, {
-            members: 0,
-            admins: 0,
-            broadcasters: 0
-          })
-          .populate('owner', ['username'])
-          .populate({
-            path : 'resources',
-            populate : [
-              { path: 'lists' },
-              { path: 'groups' },
-              { path: 'owner' },
-            ]
-          })
+      if (!groups) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+      }
+
+      if (groups.length < 1) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+      }
+
+      await User.populate(groups, { path: 'owner', select:  { _id: 1, username: 1 } })
+      await Resource.populate(groups, {
+        path: 'resources',  
+        options: { limit: limit },
+        populate : [
+          { path: 'lists', select: { _id: 1, title: 1 } },
+          { path: 'groups', select: { _id: 1, title: 1 } },
+          { path: 'owner', select:  { _id: 1, username: 1 } }
+        ]
+      })
+
+      const [group] = groups
 
       if (!group) {
         return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
       }
   
       return res.status(200).json(group) 
+    } catch (e) {
+      console.log(e)
+    }
+  }
+
+  async groupResourcesFinder(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const { 
+        _id, // group id 
+        title, // query string
+        skip
+      } = req.body
+
+      const limit = 50
+
+      if (!mongoose.isValidObjectId(_id)) {
+        return res.status(403).json({ message: 'Not valid ID of group.' })
+      }
+
+      const mongooseUserId = mongoose.Types.ObjectId(user.id)
+
+      const mongooseGroupId = mongoose.Types.ObjectId(_id)
+
+      const request = await Group.findOne({ _id: mongooseGroupId, moderations: { $in: [mongooseUserId] } })
+
+      if (request) {
+        return res.status(403).json({ message: 'Your request <b>to join the group</b> is still pending. Please wait.' })
+      }
+    
+      const groups = await Group
+        .aggregate([
+          {
+            $match: { 
+              _id: mongooseGroupId, 
+              $or: [
+                { owner: mongooseUserId },
+                { accessLevel: 'public' },
+                { members: { $in: [mongooseUserId] } },
+                { broadcasters: { $in: [mongooseUserId] } },
+                { admins: { $in: [mongooseUserId] } },
+              ]
+            } 
+          },
+          {
+            $addFields: {
+              membersAmount: { $size: "$members" },
+              adminsAmount: { $size: "$admins" },
+              broadcastersAmount: { $size: "$broadcasters" }
+            }
+          },
+          {
+            $project: {
+              members: 0,
+              admins: 0,
+              broadcasters: 0,
+              moderations: 0
+            }
+          },
+          { $limit: 1 }
+        ])
+      
+      if (!groups) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+      }
+
+      if (groups.length < 1) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+      }
+
+      await User.populate(groups, { path: 'owner', select:  { _id: 1, username: 1 } })
+      await Resource.populate(groups, {
+        path: 'resources',  
+        match: {
+          $or: [
+            { description: { $regex: new RegExp(title, 'i') } },
+            { link: { $regex: new RegExp(title, 'i') } }
+          ]
+        },
+        options: {
+          skip: skip,
+          limit: limit
+        },
+        populate : [
+          { path: 'lists', select: { _id: 1, title: 1 } },
+          { path: 'groups', select: { _id: 1, title: 1 } },
+          { path: 'owner', select:  { _id: 1, username: 1 } }
+        ]
+      })
+
+      const [group] = groups
+
+      if (!group) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+      }
+  
+      return res.status(200).json({ group, limit, resourcesAmount: group.resources.length }) 
     } catch (e) {
       console.log(e)
     }

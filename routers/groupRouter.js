@@ -41,4 +41,12 @@ router.post('/follow-group-by-request', authMiddleware, controller.followGroupBy
 
 router.post('/cancel-follow-group-by-request', authMiddleware, controller.cancelFollowGroupByRequest)
 
+router.post('/group-members-finder', authMiddleware, controller.groupMembersFinder)
+
+router.post('/set-member-role', authMiddleware, controller.setMemberRole)
+
+router.post('/remove-group-member', authMiddleware, controller.removeGroupMember)
+
+router.post('/availible-groups-finder', authMiddleware, controller.availibleGroupsFinder)
+
 module.exports = router

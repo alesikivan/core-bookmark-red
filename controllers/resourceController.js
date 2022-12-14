@@ -27,8 +27,10 @@ class ResourceController {
         lists = [],
         exploreLater = false
       } = req.body
+
+      const mongooseUserId = mongoose.Types.ObjectId(user.id)
   
-      // Check unique   link
+      // Check unique link
       const _resource = await Resource.findOne({ owner: user.id, link })
       if (_resource) {
         return res.status(400).json({ 
@@ -37,6 +39,28 @@ class ResourceController {
             Do you want to <a target="_blank" href="${process.env.CLIENT_URL}/resource/update/${_resource._id}">edit it</a>?
           ` 
         })
+      }
+
+      // Check permision to group adding
+      const vilidgroupIds = groups.map(id => mongoose.Types.ObjectId(id))
+      const groupsPermissions = await Group
+        .aggregate(
+          [
+            { 
+              $match: { 
+                _id: { $in: vilidgroupIds },
+                $or: [
+                  { owner: mongooseUserId },
+                  { broadcasters: { $in: [mongooseUserId] } },
+                  { admins: { $in: [mongooseUserId] } },
+                ],
+              } 
+            }
+          ]
+        )
+
+      if (!(groupsPermissions.length === groups.length)) {
+        return res.status(400).json({ message: 'You do not have access to this groups'} )
       }
   
       // Set rating to tag or create in global Tag collection
@@ -75,12 +99,22 @@ class ResourceController {
   
       // Save resource to groups
       await Group.updateMany(
-        { _id: { $in: groups } },
+        { 
+          _id: { $in: groups },
+          $or: [
+            { owner: { $in: [mongooseUserId] } },
+            { broadcasters: { $in: [mongooseUserId] } },
+            { admins: { $in: [mongooseUserId] } }
+          ]
+        },
         { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
   
       // Save resources to list
       await List.updateMany(
-        { _id: { $in: lists } },
+        { 
+          _id: { $in: lists },
+          owner: { $in: [mongooseUserId] }
+        },
         { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
   
       return res.status(200).json({ resource, message: 'Resource was successfully created!' }) 
@@ -166,6 +200,8 @@ class ResourceController {
         exploreLater = false
       } = req.body
 
+      const mongooseUserId = mongoose.Types.ObjectId(user.id)
+
       if (!mongoose.isValidObjectId(_id)) {
         return res.status(403).json({ message: 'Not valid ID of bookmark.' })
       }
@@ -174,6 +210,28 @@ class ResourceController {
   
       if (!previourResource) {
         return res.status(403).json({ message: 'Resource do not exist or you do not have access to it' })
+      }
+
+      // Check permision to group adding
+      const vilidGroupIds = groups.map(id => mongoose.Types.ObjectId(id))
+      const groupsPermissions = await Group
+        .aggregate(
+          [
+            { 
+              $match: { 
+                _id: { $in: vilidGroupIds },
+                $or: [
+                  { owner: mongooseUserId },
+                  { broadcasters: { $in: [mongooseUserId] } },
+                  { admins: { $in: [mongooseUserId] } },
+                ],
+              } 
+            }
+          ]
+        )
+
+      if (!(groupsPermissions.length === groups.length)) {
+        return res.status(400).json({ message: 'You do not have access to this groups'} )
       }
 
       // Set rating to tag or create in global Tag collection
@@ -216,17 +274,23 @@ class ResourceController {
       )      
 
       // Remove all previous resources from groups
+      const vilidPreviousGroups = previourResource.groups.map(id => mongoose.Types.ObjectId(id))
       await Group.updateMany(
         { 
-          _id: { $in: previourResource.groups }, 
-          owner: user.id 
+          _id: { $in: vilidPreviousGroups }, 
+          $or: [
+            { owner: mongooseUserId },
+            { broadcasters: { $in: [mongooseUserId] } },
+            { admins: { $in: [mongooseUserId] } },
+          ],
         },
         { $pull: { resources: mongoose.Types.ObjectId(resource._id) } })
 
       // Remove all previous resources array from listss
+      const vilidPreviousLists = previourResource.lists.map(id => mongoose.Types.ObjectId(id))
       await List.updateMany(
         { 
-          _id: { $in: previourResource.lists }, 
+          _id: { $in: vilidPreviousLists }, 
           owner: user.id 
         },
         { $pull: { resources: mongoose.Types.ObjectId(resource._id) } })
@@ -234,15 +298,20 @@ class ResourceController {
       // Add all new resources array to groups
       await Group.updateMany(
         { 
-          _id: { $in: groups }, 
-          owner: user.id 
+          _id: { $in: vilidGroupIds }, 
+          $or: [
+            { owner: mongooseUserId },
+            { broadcasters: { $in: [mongooseUserId] } },
+            { admins: { $in: [mongooseUserId] } },
+          ]
         },
         { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
 
       // Add all new resources array to lists
+      const vilidListIds = lists.map(id => mongoose.Types.ObjectId(id))
       await List.updateMany(
         { 
-          _id: { $in: lists }, 
+          _id: { $in: vilidListIds }, 
           owner: user.id 
         },
         { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
