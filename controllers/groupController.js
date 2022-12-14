@@ -458,12 +458,7 @@ class GroupController {
         .skip(skip)
         .limit(limit)
 
-      const groupsAmount = await Group
-        .find({ 
-          owner: user.id, 
-          title: { $regex: new RegExp(title, 'i') } 
-        })
-        .count()
+      const groupsAmount = groups.length
 
       return res.status(200).json( { groups, groupsAmount, limit } ) 
     } catch (error) {
