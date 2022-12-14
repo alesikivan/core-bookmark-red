@@ -454,7 +454,6 @@ class GroupController {
           moderations: 0
         })
         .populate('owner', ['username'])
-        .sort({ 'dateCreate': -1 })
         .skip(skip)
         .limit(limit)
 
