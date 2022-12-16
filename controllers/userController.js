@@ -417,9 +417,12 @@ class UserController {
           skip: skip,
           limit: limit
         },
+        select:  { 
+          lists: 0,  
+          groups: 0,
+          access: 0  
+        },
         populate : [
-          { path: 'lists', select: { _id: 1, title: 1 } },
-          { path: 'groups', select: { _id: 1, title: 1 } },
           { path: 'owner', select:  { _id: 1, username: 1 } }
         ]
       })
