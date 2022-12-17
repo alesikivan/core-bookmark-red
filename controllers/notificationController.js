@@ -70,6 +70,27 @@ class NotificationController {
       return res.status(400).json({message: 'Server notification functional error. Try to check your entries.'})
     }
   }
+
+  async deleteAllNotification(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const notification = await Notification
+        .find({ reviewer: user.id })
+
+      if (notification.length === 0) {
+        return res.status(400).json({ message: 'Notification do not exist or you do not have access to modify it.' })
+      }
+
+      await Notification
+        .deleteMany({ reviewer: user.id})
+
+      return res.status(200).json( { message: 'All notifications successfully deleted' } ) 
+    } catch (error) {
+      console.log(error)
+      return res.status(400).json({message: 'Server notification functional error. Try to check your entries.'})
+    }
+  }
 }
 
 module.exports = new NotificationController()
