@@ -777,7 +777,7 @@ class UserController {
 
       const lists = await listController.getListsByUserId(user.id)
 
-      res.status(200).json(lists)
+      return res.status(200).json(lists)
     } catch (error) {
       console.log(error)
       return res.status(400).json({ message: 'Server user functional error. Try to check your entries.' })
@@ -787,11 +787,11 @@ class UserController {
   async getPopularTags(req, res) {
     try {
       const tags = await Tag
-      .find({})
-      .sort({ rating: -1 })
-      .limit(15)
+        .find({})
+        .sort({ rating: -1 })
+        .limit(15)
 
-      res.status(200).json(tags)
+      return res.status(200).json(tags)
     } catch (error) {
       console.log(error)
       return res.status(400).json({ message: 'Server user functional error. Try to check your entries.' })
