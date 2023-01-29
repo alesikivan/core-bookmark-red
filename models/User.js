@@ -1,5 +1,4 @@
 const { Schema, model } = require('mongoose');
-const Group = require('./Group');
 
 const User = new Schema({
   username: {type: String, required: true},

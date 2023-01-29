@@ -803,10 +803,10 @@ class UserController {
       const password = uuidv4()
       let hash = await bcrypt.hash(password, 7)
 
-      const roles = await Role.findOne({ value: 'USER' })
+      const role = await Role.findOne({ value: 'USER' })
 
       const user = new User({
-        email, roles ,username: fullName, password: hash, profilePhoto, source: 'google'
+        email, roles: [role.value], username: fullName, password: hash, profilePhoto, source: 'google'
       })
 
       return await user.save()

@@ -181,10 +181,14 @@ class SearchController {
 
   async findSharedResourcesByBERT(req, res) {
     try {
-      let user = {}
+      if (req.headers.authorization) {
+        var user = getUserByToken(req.headers.authorization)
+      } else {
+        var user = {}
+      }
 
-      if (req.headers.authorization)
-        user = getUserByToken(req.headers.authorization, res)
+      if (!user)
+        return res.status(401).json({message: 'Invalid API token.'})
 
       const {
         text = '',

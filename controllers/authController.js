@@ -7,6 +7,7 @@ const Role = require('../models/Role')
 const { generateAccessToken } = require('../helpers/functions')
 const userController = require('../controllers/userController')
 const sendEmail = require('../utils/auth/mailer')
+const { default: mongoose } = require('mongoose')
 
 class authController {
   async register(req, res) {
@@ -89,8 +90,12 @@ class authController {
     user.resetPasswordToken = resetPasswordToken
     user.resetPasswordExpire = resetPasswordExpire
 
-    await user.save({ validaetBeforeSave: false })
-
+    await user.save({ validaetBeforeSave: false }, (err) => {
+      if (err) {
+        console.log(err)
+      }
+    })
+     
     const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`
 
     const message = `Click this link to set a new password: ${resetUrl}`

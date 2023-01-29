@@ -9,9 +9,12 @@ function generateAccessToken(id, username, email, roles, user) {
 function getUserByToken(authorization) {
   const token = authorization.split(' ')[1]
   
-  const user = jwt.verify(token, process.env.SECRET_KEY)
-
-  return user
+  try {
+    const user = jwt.verify(token, process.env.SECRET_KEY)
+    return user
+  } catch (error) {
+    return false
+  }
 }
 
 module.exports = { generateAccessToken, getUserByToken }
