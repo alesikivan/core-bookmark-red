@@ -5,7 +5,8 @@ const Resource = new Schema({
   access: {type: String, required: true, default: 'public'},
   description: {type: String, default: ''},
   title: {type: String, default: ''},
-  bertId: {type: Number},
+  isBERT: { type: Boolean }, 
+  embeddings: { type: [Number], default: [] },
   coordinates: {
     x: Number,
     y: Number
