@@ -321,6 +321,7 @@ class UserController {
           groups: 0,
           access: 0  
         },
+        options: { sort: { dateCreate: -1 }},
         populate : [
           { path: 'owner', select:  { _id: 1, username: 1 } }
         ]
@@ -422,6 +423,7 @@ class UserController {
           groups: 0,
           access: 0  
         },
+        options: { sort: { dateCreate: -1 }},
         populate : [
           { path: 'owner', select:  { _id: 1, username: 1 } }
         ]

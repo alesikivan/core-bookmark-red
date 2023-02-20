@@ -6,6 +6,7 @@ const Group = require('../models/Group')
 const List = require('../models/List')
 const Tag = require('../models/Tag')
 const { default: mongoose } = require('mongoose')
+const { default: axios } = require('axios')
 
 class ResourceController {
   async resourceCreate(req, res) {
@@ -29,7 +30,7 @@ class ResourceController {
       } = req.body
 
       const mongooseUserId = mongoose.Types.ObjectId(user.id)
-  
+      
       // Check unique link
       const _resource = await Resource.findOne({ owner: user.id, link })
       if (_resource) {
@@ -40,6 +41,8 @@ class ResourceController {
           ` 
         })
       }
+
+      const { isBERT, embeddings } = await isBERTbelonging(description)
 
       // Check permision to group adding
       const vilidgroupIds = groups.map(id => mongoose.Types.ObjectId(id))
@@ -90,6 +93,8 @@ class ResourceController {
         tags,
         groups,
         lists,
+        isBERT,
+        embeddings,
         exploreLater,
         owner: user.id,
         dateCreate: new Date()
@@ -212,6 +217,8 @@ class ResourceController {
         return res.status(403).json({ message: 'Resource do not exist or you do not have access to it' })
       }
 
+      const { isBERT, embeddings } = await isBERTbelonging(description)
+
       // Check permision to group adding
       const vilidGroupIds = groups.map(id => mongoose.Types.ObjectId(id))
       const groupsPermissions = await Group
@@ -268,6 +275,8 @@ class ResourceController {
           tags,
           groups,
           lists,
+          isBERT, 
+          embeddings,
           exploreLater,
           dateUpdate: new Date()
         } }
@@ -418,6 +427,24 @@ class ResourceController {
       return res.status(400).json({ message: `Server resource functional error. Try to check your entries` })
     }
   }
+}
+
+async function isBERTbelonging(description) {
+  // Check belonging to BERT (not empty description and no russian letters)
+  let isBERT = !!description.trim() && !/[\u0400-\u04FF]/.test(description)
+  let embeddings = []
+
+  if (isBERT) {
+    const text = encodeURIComponent(description)
+    const { data } = await axios
+      .get(`${process.env.PYTHON_SERVER}/prepare/embeddings?abstract=${text}`)
+     
+    const [preparedEmbeddings] = data
+    isBERT = !!preparedEmbeddings
+    embeddings = [...preparedEmbeddings || []]
+  }
+
+  return { isBERT, embeddings }
 }
 
 module.exports = new ResourceController()
