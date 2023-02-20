@@ -8,6 +8,7 @@ const Group = require('../models/Group')
 const Level = require('../models/Level')
 const Cluster = require('../models/Cluster')
 const Hierarchical = require('../models/Hierarchical')
+const { default: mongoose } = require('mongoose')
 
 const axios = require('axios').default;
 
@@ -205,9 +206,9 @@ class SearchController {
       const response = await axios
         .get(`${process.env.PYTHON_SERVER}/search?query=${text}`)
       
-      const {data: ids } = response
+      const { data: ids } = response
 
-      find['$match'].bertId = { $in: ids }
+      find['$match']._id = { $in: ids.map(id => mongoose.Types.ObjectId(id)) }
 
       const resources = await Resource
         .aggregate([ 
@@ -215,7 +216,7 @@ class SearchController {
           { $limit : 50 }, 
           { "$addFields" : { "__order" : { "$indexOfArray" : [ ids, "$bertId" ] } } },
           { "$sort" : { "__order" : 1 } },
-          { "$project": {"__order":0}} 
+          { "$project": {"__order": 0 } } 
         ])
 
       // await List.populate(resources, {path: "lists",  select:  {_id: 1, title: 1, resources: 1}})
