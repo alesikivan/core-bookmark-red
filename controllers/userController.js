@@ -12,6 +12,7 @@ const { getUserByToken } = require('../helpers/functions')
 const groupController = require('./groupController')
 const listController = require('./listController')
 const { default: mongoose } = require('mongoose')
+const { default: axios } = require('axios')
 
 class UserController {
   async getById(id) {
@@ -413,6 +414,111 @@ class UserController {
             { description: { $regex: new RegExp(title, 'i') } },
             { link: { $regex: new RegExp(title, 'i') } }
           ]
+        },
+        options: {
+          skip: skip,
+          limit: limit
+        },
+        select:  { 
+          lists: 0,  
+          groups: 0,
+          access: 0  
+        },
+        options: { sort: { dateCreate: -1 }},
+        populate : [
+          { path: 'owner', select:  { _id: 1, username: 1 } }
+        ]
+      })
+
+      const [group] = groups
+
+      if (!group) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+      }
+  
+      return res.status(200).json({ group, limit, resourcesAmount: group.resources.length }) 
+    } catch (e) {
+      console.log(e)
+    }
+  }
+
+  async bertGroupResourcesFinder(req, res) {
+    try {
+      const user = getUserByToken(req.headers.authorization)
+
+      const { 
+        _id, // group id 
+        title, // query string
+        skip
+      } = req.body
+
+      const limit = 50
+
+      if (!mongoose.isValidObjectId(_id)) {
+        return res.status(403).json({ message: 'Not valid ID of group.' })
+      }
+
+      const mongooseUserId = mongoose.Types.ObjectId(user.id)
+
+      const mongooseGroupId = mongoose.Types.ObjectId(_id)
+
+      const request = await Group.findOne({ _id: mongooseGroupId, moderations: { $in: [mongooseUserId] } })
+
+      if (request) {
+        return res.status(403).json({ message: 'Your request <b>to join the group</b> is still pending. Please wait.' })
+      }
+    
+      const groups = await Group
+        .aggregate([
+          {
+            $match: { 
+              _id: mongooseGroupId, 
+              $or: [
+                { owner: mongooseUserId },
+                { accessLevel: 'public' },
+                { members: { $in: [mongooseUserId] } },
+                { broadcasters: { $in: [mongooseUserId] } },
+                { admins: { $in: [mongooseUserId] } },
+              ]
+            } 
+          },
+          {
+            $addFields: {
+              membersAmount: { $size: "$members" },
+              adminsAmount: { $size: "$admins" },
+              broadcastersAmount: { $size: "$broadcasters" }
+            }
+          },
+          {
+            $project: {
+              members: 0,
+              admins: 0,
+              broadcasters: 0,
+              moderations: 0
+            }
+          },
+          { $limit: 1 }
+        ])
+      
+      if (!groups) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+      }
+
+      if (groups.length < 1) {
+        return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+      }
+
+      const response = await axios
+        .get(`${process.env.PYTHON_SERVER}/group-search?query=${title}&group=${_id}`)
+      
+      let { data: ids } = response
+      ids = ids.map(id => mongoose.Types.ObjectId(id))
+
+      await User.populate(groups, { path: 'owner', select:  { _id: 1, username: 1 } })
+      await Resource.populate(groups, {
+        path: 'resources',  
+        match: {
+          _id: { $in: ids }
         },
         options: {
           skip: skip,

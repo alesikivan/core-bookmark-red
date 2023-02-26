@@ -24,6 +24,8 @@ router.get('/get-group-resources/:id', authMiddleware, controller.getResourcesBy
 
 router.post('/group-resources-finder', authMiddleware, controller.groupResourcesFinder)
 
+router.post('/bert-group-resources-finder', authMiddleware, controller.bertGroupResourcesFinder)
+
 router.post('/set-follow', authMiddleware, controller.setFollow)
 
 router.post('/cancel-follow', authMiddleware, controller.cancelFollow)
