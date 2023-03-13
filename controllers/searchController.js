@@ -193,23 +193,54 @@ class SearchController {
 
       const {
         text = '',
-        includeMy = false,
+        groups = []
+        // includeMy = false,
       } = req.body
 
       const find = { $match: { access: 'public' } }
 
-      if (user) {
-        if (!includeMy) 
-          find['$match'].owner = { $not: { $eq: user.id } }
+      // if (user) {
+      //   if (!includeMy) 
+      //     find['$match'].owner = { $not: { $eq: user.id } }
+      // }
+
+      // Check group permition
+      if (groups.length > 0) {
+        const mongooseUserId = mongoose.Types.ObjectId(user.id)
+        const vilidgroupIds = groups.map(id => mongoose.Types.ObjectId(id))
+        const groupsPermissions = await Group
+          .aggregate(
+            [
+              { 
+                $match: { 
+                  _id: { $in: vilidgroupIds },
+                  $or: [
+                    { owner: mongooseUserId },
+                    { broadcasters: { $in: [mongooseUserId] } },
+                    { admins: { $in: [mongooseUserId] } },
+                  ],
+                } 
+              }
+            ]
+          )
+  
+        if (!(groupsPermissions.length === groups.length)) {
+          return res.status(400).json({ message: 'You do not have access to this groups'} )
+        }
       }
 
-      const response = await axios
-        .get(`${process.env.PYTHON_SERVER}/search?query=${text}`)
+      const url = groups.length > 0 ? (
+        `${process.env.PYTHON_SERVER}/groups-search?query=${text}&groups=${groups.join()}`
+      ) : (
+        `${process.env.PYTHON_SERVER}/search?query=${text}`
+      )
+
+      const response = await axios.get(url)
       
       const { data: ids } = response
-
+      
       find['$match']._id = { $in: ids.map(id => mongoose.Types.ObjectId(id)) }
-
+      
       const resources = await Resource
         .aggregate([ 
           find, 
