@@ -239,15 +239,16 @@ class SearchController {
       
       const { data: ids } = response
       
-      find['$match']._id = { $in: ids.map(id => mongoose.Types.ObjectId(id)) }
+      const prepared = ids.map(id => mongoose.Types.ObjectId(id))
+
+      find['$match']._id = { $in: prepared }
       
       const resources = await Resource
         .aggregate([ 
           find, 
           { $limit : 50 }, 
-          { "$addFields" : { "__order" : { "$indexOfArray" : [ ids, "$bertId" ] } } },
-          { "$sort" : { "__order" : 1 } },
-          { "$project": {"__order": 0 } } 
+          { $addFields: { __order: { $indexOfArray: [ prepared, "$_id" ] } } },
+          { $sort: { __order: 1 } }
         ])
 
       // await List.populate(resources, {path: "lists",  select:  {_id: 1, title: 1, resources: 1}})
