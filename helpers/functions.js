@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken')
 function generateAccessToken(id, username, email, roles, user) {
   const payload = Object.assign( { id, username, email, roles }, user )
 
-  return jwt.sign(payload, process.env.SECRET_KEY, { expiresIn: '7d' })
+  return jwt.sign(payload, process.env.SECRET_KEY, { expiresIn: '30d' })
 }
 
 function getUserByToken(authorization) {
