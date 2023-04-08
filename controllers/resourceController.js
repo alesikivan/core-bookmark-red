@@ -42,7 +42,7 @@ class ResourceController {
         })
       }
 
-      const { isBERT, embeddings } = await isBERTbelonging(description)
+      const { isBERT, embeddings, coordinates } = await isBERTbelonging(description)
 
       // Check permision to group adding
       const vilidgroupIds = groups.map(id => mongoose.Types.ObjectId(id))
@@ -92,6 +92,7 @@ class ResourceController {
         description,
         tags,
         groups,
+        coordinates,
         lists,
         isBERT,
         embeddings,
@@ -217,7 +218,7 @@ class ResourceController {
         return res.status(403).json({ message: 'Resource do not exist or you do not have access to it' })
       }
 
-      const { isBERT, embeddings } = await isBERTbelonging(description)
+      const { isBERT, embeddings, coordinates } = await isBERTbelonging(description)
 
       // Check permision to group adding
       const vilidGroupIds = groups.map(id => mongoose.Types.ObjectId(id))
@@ -276,6 +277,7 @@ class ResourceController {
           groups,
           lists,
           isBERT, 
+          coordinates,
           embeddings,
           exploreLater,
           dateUpdate: new Date()
@@ -433,6 +435,7 @@ async function isBERTbelonging(description) {
   // Check belonging to BERT (not empty description and no russian letters)
   let isBERT = !!description.trim() && !/[\u0400-\u04FF]/.test(description)
   let embeddings = []
+  let coordinates = null
 
   if (isBERT) {
     const text = encodeURIComponent(description)
@@ -442,9 +445,19 @@ async function isBERTbelonging(description) {
     const [preparedEmbeddings] = data
     isBERT = !!preparedEmbeddings
     embeddings = [...preparedEmbeddings || []]
+
+    // Get coordinates
+    if (embeddings.length > 0) {
+      const { data } = await axios
+        .get(`${process.env.PYTHON_SERVER}/prepare/coordinates?embedding=${embeddings.join(',')}`)
+
+      const [x, y] = data
+      coordinates = { x, y }
+    }
+    
   }
 
-  return { isBERT, embeddings }
+  return { isBERT, embeddings, coordinates }
 }
 
 module.exports = new ResourceController()

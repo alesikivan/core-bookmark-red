@@ -197,6 +197,8 @@ class SearchController {
         // includeMy = false,
       } = req.body
 
+      const  limit = 1000
+
       const find = { $match: { access: 'public' } }
 
       // if (user) {
@@ -230,15 +232,14 @@ class SearchController {
       }
 
       const url = groups.length > 0 ? (
-        `${process.env.PYTHON_SERVER}/groups-search?query=${text}&groups=${groups.join()}`
+        `${process.env.PYTHON_SERVER}/groups-search?query=${text}&groups=${groups.join()}&amount=${limit}`
       ) : (
-        `${process.env.PYTHON_SERVER}/search?query=${text}`
+        `${process.env.PYTHON_SERVER}/search?query=${text}&amount=${limit}`
       )
 
       const response = await axios.get(url)
       
-      const { data: ids } = response
-      
+      const [ids, queryCoordinates] = response.data
       const prepared = ids.map(id => mongoose.Types.ObjectId(id))
 
       find['$match']._id = { $in: prepared }
@@ -246,7 +247,7 @@ class SearchController {
       const resources = await Resource
         .aggregate([ 
           find, 
-          { $limit : 50 }, 
+          { $limit : limit }, 
           { $addFields: { __order: { $indexOfArray: [ prepared, "$_id" ] } } },
           { $sort: { __order: 1 } }
         ])
@@ -255,7 +256,7 @@ class SearchController {
       // await Group.populate(resources, {path: "groups",  select:  {_id: 1, title: 1, resources: 1}})
       await User.populate(resources, {path: "owner",  select:  {_id: 1, username: 1}})
 
-      return res.status(200).json( resources )
+      return res.status(200).json({ resources, queryCoordinates })
 
     } catch (e) {
       console.log(e)
