@@ -508,6 +508,36 @@ class UserController {
         return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
       }
 
+      // Default (preview) request
+      if (title === '') {
+        await User.populate(groups, { path: 'owner', select:  { _id: 1, username: 1 } })
+
+        await Resource.populate(groups, {
+          path: 'resources',  
+          options: {
+            skip: skip,
+            limit: limit,
+            sort: { dateCreate: -1 }
+          },
+          select:  { 
+            lists: 0,  
+            groups: 0,
+            access: 0  
+          },
+          populate : [
+            { path: 'owner', select:  { _id: 1, username: 1 } }
+          ]
+        })
+
+        const [group] = groups
+
+        if (!group) {
+          return res.status(403).json({ message: 'Group do not exist or you do not have access to it' })
+        }
+    
+        return res.status(200).json({ group, limit, resourcesAmount: group.resources.length }) 
+      }
+
       const response = await axios
         .get(`${process.env.PYTHON_SERVER}/group-search?query=${title}&group=${_id}`)
       

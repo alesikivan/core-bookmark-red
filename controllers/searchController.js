@@ -231,6 +231,22 @@ class SearchController {
         }
       }
 
+      // Default (preview) request
+      if (text === '') {
+        if (groups.length)
+          find['$match'].groups = { $in: groups.map(id => mongoose.Types.ObjectId(id)) }
+
+        const resources = await Resource
+          .aggregate([ 
+            find, 
+            { $limit : limit }, 
+            { $sort: { dateCreate: -1 } }
+          ])
+        await User.populate(resources, {path: "owner",  select:  { _id: 1, username: 1 }})
+
+        return res.status(200).json({ resources, queryCoordinates: [0, 0] })
+      }
+
       const url = groups.length > 0 ? (
         `${process.env.PYTHON_SERVER}/groups-search?query=${text}&groups=${groups.join()}&amount=${limit}`
       ) : (
