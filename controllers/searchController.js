@@ -233,15 +233,15 @@ class SearchController {
 
       // Default (preview) request
       if (text === '') {
+        const filters = { access: 'public', isBERT: true }
         if (groups.length)
-          find['$match'].groups = { $in: groups.map(id => mongoose.Types.ObjectId(id)) }
+          filters['groups'] = { $in: groups.map(id => mongoose.Types.ObjectId(id)) }
 
         const resources = await Resource
-          .aggregate([ 
-            find, 
-            { $limit : limit }, 
-            { $sort: { dateCreate: -1 } }
-          ])
+          .find(filters)
+          .sort({dateCreate: -1})
+          .limit(limit)
+        
         await User.populate(resources, {path: "owner",  select:  { _id: 1, username: 1 }})
 
         return res.status(200).json({ resources, queryCoordinates: [0, 0] })
