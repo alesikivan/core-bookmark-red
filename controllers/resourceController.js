@@ -3,6 +3,7 @@ const { validationResult } = require('express-validator')
 const { getUserByToken } = require('../helpers/functions')
 const Resource = require('../models/Resource')
 const Group = require('../models/Group')
+const Keyword = require('../models/Keyword')
 const List = require('../models/List')
 const Tag = require('../models/Tag')
 const { default: mongoose } = require('mongoose')
@@ -12,33 +13,34 @@ class ResourceController {
   async resourceCreate(req, res) {
     try {
       const errors = validationResult(req)
-      
+
       if (!errors.isEmpty()) {
-        return res.status(400).json({message: 'Invalid data', errors})
+        return res.status(400).json({ message: 'Invalid data', errors })
       }
-  
+
       const user = getUserByToken(req.headers.authorization)
-  
-      const { 
+
+      const {
         link,
         access = 'public',
         description = '',
         tags = [],
         groups = [],
+        keywords = [],
         lists = [],
         exploreLater = false
       } = req.body
 
       const mongooseUserId = mongoose.Types.ObjectId(user.id)
-      
+
       // Check unique link
       const _resource = await Resource.findOne({ owner: user.id, link })
       if (_resource) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           message: `
             Resource with this url has been already created.
             Do you want to <a target="_blank" href="${process.env.CLIENT_URL}/resource/update/${_resource._id}">edit it</a>?
-          ` 
+          `
         })
       }
 
@@ -49,43 +51,69 @@ class ResourceController {
       const groupsPermissions = await Group
         .aggregate(
           [
-            { 
-              $match: { 
+            {
+              $match: {
                 _id: { $in: vilidgroupIds },
                 $or: [
                   { owner: mongooseUserId },
                   { broadcasters: { $in: [mongooseUserId] } },
                   { admins: { $in: [mongooseUserId] } },
                 ],
-              } 
+              }
             }
           ]
         )
 
       if (!(groupsPermissions.length === groups.length)) {
-        return res.status(400).json({ message: 'You do not have access to this groups'} )
+        return res.status(400).json({ message: 'You do not have access to this groups' })
       }
-  
+
       // Set rating to tag or create in global Tag collection
       // Optimize later
-      tags.forEach(async tag => {
-        const exist = await Tag.findOne({ title: tag })
-  
-        if (!exist) {
-          // Tag do not exist
-          const _tag = new Tag({ title: tag })
-          await _tag.save()
-        } else {
-          await Tag.updateOne(
-            { title: tag },
-            { $set: { 
-              rating: exist.rating + 0.001,
-              dateUpdate: new Date()
-             } }
-          )
+      // tags.forEach(async tag => {
+      //   const exist = await Tag.findOne({ title: tag })
+
+      //   if (!exist) {
+      //     // Tag do not exist
+      //     const _tag = new Tag({ title: tag })
+      //     await _tag.save()
+      //   } else {
+      //     await Tag.updateOne(
+      //       { title: tag },
+      //       { $set: { 
+      //         rating: exist.rating + 0.001,
+      //         dateUpdate: new Date()
+      //        } }
+      //     )
+      //   }
+      // })
+
+      // Save the keywords
+      // Filter input keywords by special format
+      const filteredKeywords = keywords.filter(keyword => /^[a-zA-Z0-9 ._-]+$/.test(keyword))
+      
+      let lowerCaseKeywords = filteredKeywords.map(keyword => keyword.toLowerCase().trim())
+      let keywordMatches = await Keyword.find({ title: { $in: lowerCaseKeywords } }, { title: 1 })
+      keywordMatches = keywordMatches.map(keyword => keyword.title)
+
+      const keywordsDiff = lowerCaseKeywords.filter(keyword => !keywordMatches.includes(keyword))
+
+      // Load embeddings
+      const { data: keywordEmbeddings } = await axios
+        .get(`${process.env.PYTHON_SERVER}/prepare/embeddings-list?words=${encodeURIComponent(keywordsDiff.join(','))}`)
+
+      const insertReywords = keywordEmbeddings.map((embedding, i) => {
+        return {
+          title: keywordsDiff[i],
+          embedding: embedding,
+          dateCreate: new Date(),
+          dateUpdate: new Date(),
         }
       })
-  
+
+      const savedKeywords = await Keyword.insertMany(insertReywords)
+
+      // Get embeddings of new keywords
       const resource = new Resource({
         link,
         access,
@@ -97,15 +125,16 @@ class ResourceController {
         isBERT,
         embeddings,
         exploreLater,
+        keywords: filteredKeywords,
         owner: user.id,
         dateCreate: new Date()
       })
-  
+
       await resource.save()
-  
+
       // Save resource to groups
       await Group.updateMany(
-        { 
+        {
           _id: { $in: groups },
           $or: [
             { owner: { $in: [mongooseUserId] } },
@@ -114,19 +143,19 @@ class ResourceController {
           ]
         },
         { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
-  
+
       // Save resources to list
       await List.updateMany(
-        { 
+        {
           _id: { $in: lists },
           owner: { $in: [mongooseUserId] }
         },
         { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
-  
-      return res.status(200).json({ resource, message: 'Resource was successfully created!' }) 
+
+      return res.status(200).json({ resource, message: 'Resource was successfully created!' })
     } catch (error) {
       console.log(error)
-      return res.status(400).json({message: 'Server resource functional error. Try to check your entries.'})
+      return res.status(400).json({ message: 'Server resource functional error. Try to check your entries.' })
     }
   }
 
@@ -134,14 +163,14 @@ class ResourceController {
     try {
       const user = getUserByToken(req.headers.authorization)
 
-      const { id = '' } =  req.params
-  
+      const { id = '' } = req.params
+
       const resource = await Resource.findOne({ _id: id, owner: user.id })
-  
+
       if (!resource) {
         return res.status(400).json({ message: `Can not find resources to delete` })
       }
-  
+
       if (user.id !== String(resource.owner)) {
         return res.status(400).json({ message: `You do not have access to delete it` })
       }
@@ -155,11 +184,11 @@ class ResourceController {
         { $pull: { resources: mongoose.Types.ObjectId(resource._id) } })
 
       await Resource.deleteOne({ _id: String(resource._id), owner: user.id })
-  
-      return res.status(200).json({ message: `Resource successfully deleted` }) 
+
+      return res.status(200).json({ message: `Resource successfully deleted` })
     } catch (error) {
       console.log(error)
-      return res.status(400).json({message: 'Server resource functional error. Try to check your entries.'})
+      return res.status(400).json({ message: 'Server resource functional error. Try to check your entries.' })
     }
   }
 
@@ -168,21 +197,21 @@ class ResourceController {
       const user = getUserByToken(req.headers.authorization)
 
       const { id: _id } = req.params
-  
+
       if (!mongoose.isValidObjectId(_id)) {
         return res.status(403).json({ message: 'Not valid ID of bookmark.' })
       }
-  
+
       const resource = await Resource.findOne({ _id, owner: user.id })
-  
+
       if (!resource) {
         return res.status(403).json({ message: 'Resource do not exist or you do not have access to it' })
       }
-  
-      return res.status(200).json(resource) 
+
+      return res.status(200).json(resource)
     } catch (e) {
       console.log(e)
-      return res.status(400).json({message: 'Server resource functional error. Try to check your entries.'})
+      return res.status(400).json({ message: 'Server resource functional error. Try to check your entries.' })
     }
   }
 
@@ -190,9 +219,9 @@ class ResourceController {
     try {
       const user = getUserByToken(req.headers.authorization)
       const errors = validationResult(req)
-      
+
       if (!errors.isEmpty()) {
-        return res.status(400).json({message: 'Invalid data', errors})
+        return res.status(400).json({ message: 'Invalid data', errors })
       }
 
       const {
@@ -202,6 +231,7 @@ class ResourceController {
         description = '',
         tags = [],
         groups = [],
+        keywords = [],
         lists = [],
         exploreLater = false
       } = req.body
@@ -211,9 +241,9 @@ class ResourceController {
       if (!mongoose.isValidObjectId(_id)) {
         return res.status(403).json({ message: 'Not valid ID of bookmark.' })
       }
-  
+
       const previourResource = await Resource.findOne({ _id, owner: user.id })
-  
+
       if (!previourResource) {
         return res.status(403).json({ message: 'Resource do not exist or you do not have access to it' })
       }
@@ -225,70 +255,100 @@ class ResourceController {
       const groupsPermissions = await Group
         .aggregate(
           [
-            { 
-              $match: { 
+            {
+              $match: {
                 _id: { $in: vilidGroupIds },
                 $or: [
                   { owner: mongooseUserId },
                   { broadcasters: { $in: [mongooseUserId] } },
                   { admins: { $in: [mongooseUserId] } },
                 ],
-              } 
+              }
             }
           ]
         )
 
       if (!(groupsPermissions.length === groups.length)) {
-        return res.status(400).json({ message: 'You do not have access to this groups'} )
+        return res.status(400).json({ message: 'You do not have access to this groups' })
       }
 
       // Set rating to tag or create in global Tag collection
-      tags.forEach(async tag => {
-        const exist = await Tag.findOne({ title: tag })
-  
-        if (!exist) {
-          // Tag do not exist
-          const _tag = new Tag({ title: tag })
-          await _tag.save()
-        } else {
-          await Tag.updateOne(
-            { title: tag },
-            { $set: { 
-              rating: exist.rating + 0.001,
-              dateUpdate: new Date()
-             } }
-          )
-        }
-      })
+      // tags.forEach(async tag => {
+      //   const exist = await Tag.findOne({ title: tag })
+
+      //   if (!exist) {
+      //     // Tag do not exist
+      //     const _tag = new Tag({ title: tag })
+      //     await _tag.save()
+      //   } else {
+      //     await Tag.updateOne(
+      //       { title: tag },
+      //       {
+      //         $set: {
+      //           rating: exist.rating + 0.001,
+      //           dateUpdate: new Date()
+      //         }
+      //       }
+      //     )
+      //   }
+      // })
 
       // Protect from similar user links
       const similar = await Resource.findOne({ link, owner: user.id })
       if (similar && String(similar._id) != String(_id)) {
-        return res.status(400).json({message: 'You have already created the resource with this link'})
+        return res.status(400).json({ message: 'You have already created the resource with this link' })
       }
+
+      // Save the keywords
+      // Filter input keywords by special format
+      const filteredKeywords = keywords.filter(keyword => /^[a-zA-Z0-9 ._-]+$/.test(keyword))
+      
+      let lowerCaseKeywords = filteredKeywords.map(keyword => keyword.toLowerCase().trim())
+      let keywordMatches = await Keyword.find({ title: { $in: lowerCaseKeywords } }, { title: 1 })
+      keywordMatches = keywordMatches.map(keyword => keyword.title)
+
+      const keywordsDiff = lowerCaseKeywords.filter(keyword => !keywordMatches.includes(keyword))
+
+      // Load embeddings
+      const { data: keywordEmbeddings } = await axios
+        .get(`${process.env.PYTHON_SERVER}/prepare/embeddings-list?words=${encodeURIComponent(keywordsDiff.join(','))}`)
+
+      const insertReywords = keywordEmbeddings.map((embedding, i) => {
+        return {
+          title: keywordsDiff[i],
+          embedding: embedding,
+          dateCreate: new Date(),
+          dateUpdate: new Date(),
+        }
+      })
+
+      const savedKeywords = await Keyword.insertMany(insertReywords)
 
       const resource = await Resource.findOneAndUpdate(
         { _id: _id, owner: user.id },
-        { $set: {
-          link,
-          access,
-          description,
-          tags,
-          groups,
-          lists,
-          isBERT, 
-          coordinates,
-          embeddings,
-          exploreLater,
-          dateUpdate: new Date()
-        } }
-      )      
+        {
+          $set: {
+            link,
+            access,
+            description,
+            tags,
+            groups,
+            lists,
+            keywords: filteredKeywords,
+            isBERT,
+            coordinates,
+            embeddings,
+            exploreLater,
+            dateUpdate: new Date()
+          }
+        }
+      )
 
       // Remove all previous resources from groups
       const vilidPreviousGroups = previourResource.groups.map(id => mongoose.Types.ObjectId(id))
       await Group.updateMany(
-        { 
-          _id: { $in: vilidPreviousGroups }, 
+        {
+          _id: { $in: vilidPreviousGroups },
           $or: [
             { owner: mongooseUserId },
             { broadcasters: { $in: [mongooseUserId] } },
@@ -300,16 +360,16 @@ class ResourceController {
       // Remove all previous resources array from listss
       const vilidPreviousLists = previourResource.lists.map(id => mongoose.Types.ObjectId(id))
       await List.updateMany(
-        { 
-          _id: { $in: vilidPreviousLists }, 
-          owner: user.id 
+        {
+          _id: { $in: vilidPreviousLists },
+          owner: user.id
         },
         { $pull: { resources: mongoose.Types.ObjectId(resource._id) } })
-     
+
       // Add all new resources array to groups
       await Group.updateMany(
-        { 
-          _id: { $in: vilidGroupIds }, 
+        {
+          _id: { $in: vilidGroupIds },
           $or: [
             { owner: mongooseUserId },
             { broadcasters: { $in: [mongooseUserId] } },
@@ -321,16 +381,16 @@ class ResourceController {
       // Add all new resources array to lists
       const vilidListIds = lists.map(id => mongoose.Types.ObjectId(id))
       await List.updateMany(
-        { 
-          _id: { $in: vilidListIds }, 
-          owner: user.id 
+        {
+          _id: { $in: vilidListIds },
+          owner: user.id
         },
         { $push: { resources: mongoose.Types.ObjectId(resource._id) } })
 
       return res.status(200).json({ message: 'Bookmark has been successfully updated.' })
     } catch (e) {
       console.log(e)
-      return res.status(400).json({message: 'Server resource functional error. Try to check your entries.'})
+      return res.status(400).json({ message: 'Server resource functional error. Try to check your entries.' })
     }
   }
 
@@ -338,40 +398,40 @@ class ResourceController {
     try {
       const user = getUserByToken(req.headers.authorization)
 
-      const { ids = [] } =  req.body
+      const { ids = [] } = req.body
 
       const resources = await Resource.find({ _id: ids, owner: user.id })
-  
+
       if (!resources.length) {
         return res.status(400).json({ message: `Can not find resource to delete` })
       }
-      
+
       // Delete the resources in the groups
       await Group.updateMany(
-        { 
-          resources: { $in: ids }, 
-          owner: user.id 
+        {
+          resources: { $in: ids },
+          owner: user.id
         },
         { $pullAll: { resources: ids } })
 
       // Delete the resources in the lists
       await List.updateMany(
-        { 
-          resources: { $in: ids }, 
-          owner: user.id 
+        {
+          resources: { $in: ids },
+          owner: user.id
         },
         { $pullAll: { resources: ids } })
-      
-      // Delete all resources
-      await Resource.deleteMany({ 
-        _id: { $in: ids }, 
-        owner: user.id 
-      }) 
 
-      return res.status(200).json({ message: `Resources successfully deleted` }) 
+      // Delete all resources
+      await Resource.deleteMany({
+        _id: { $in: ids },
+        owner: user.id
+      })
+
+      return res.status(200).json({ message: `Resources successfully deleted` })
     } catch (error) {
       console.log(error)
-      return res.status(400).json({message: 'Server resource functional error. Try to check your entries.'})
+      return res.status(400).json({ message: 'Server resource functional error. Try to check your entries.' })
     }
   }
 
@@ -379,13 +439,13 @@ class ResourceController {
     try {
       const user = getUserByToken(req.headers.authorization)
 
-      const { 
-        ids = [], 
-        access = 'public' 
-      } =  req.body
+      const {
+        ids = [],
+        access = 'public'
+      } = req.body
 
       const resources = await Resource.find({ _id: ids, owner: user.id })
-  
+
       if (!resources.length) {
         return res.status(400).json({ message: `Can not find resource to delete` })
       }
@@ -393,10 +453,12 @@ class ResourceController {
       for (const resource of resources) {
         await Resource.findOneAndUpdate(
           { _id: resource._id },
-          { $set: {
-            access,
-            dateUpdate: new Date()
-          } }
+          {
+            $set: {
+              access,
+              dateUpdate: new Date()
+            }
+          }
         )
       }
 
@@ -411,18 +473,20 @@ class ResourceController {
     try {
       const user = getUserByToken(req.headers.authorization)
 
-      const { 
-        id = '', 
-      } =  req.body
+      const {
+        id = '',
+      } = req.body
 
       await Resource.findOneAndUpdate(
-        {  _id: id, owner: user.id },
-        { $set: {
-          exploreLater: false,
-          dateUpdate: new Date()
-        } }
+        { _id: id, owner: user.id },
+        {
+          $set: {
+            exploreLater: false,
+            dateUpdate: new Date()
+          }
+        }
       )
-      
+
       return res.status(200).json({ message: `Successfully updated explore later mode of resource` })
     } catch (error) {
       console.log(error)
@@ -441,7 +505,7 @@ async function isBERTbelonging(description) {
     const text = encodeURIComponent(description)
     const { data } = await axios
       .get(`${process.env.PYTHON_SERVER}/prepare/embeddings?abstract=${text}`)
-     
+
     const [preparedEmbeddings] = data
     isBERT = !!preparedEmbeddings
     embeddings = [...preparedEmbeddings || []]
@@ -454,7 +518,7 @@ async function isBERTbelonging(description) {
       const [x, y] = data
       coordinates = { x, y }
     }
-    
+
   }
 
   return { isBERT, embeddings, coordinates }
