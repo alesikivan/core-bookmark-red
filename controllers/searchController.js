@@ -254,7 +254,7 @@ class SearchController {
       )
 
       const response = await axios.get(url)
-      
+
       const [ids, queryCoordinates] = response.data
       const prepared = ids.map(id => mongoose.Types.ObjectId(id))
 

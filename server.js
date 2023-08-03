@@ -18,6 +18,7 @@ const notificationRouter = require('./routers/notificationRouter')
 const searchRouter = require('./routers/searchRouter')
 const feedbackRouter = require('./routers/feedbackRouter')
 const contentRouter = require('./routers/contentRouter')
+const clustersRouter = require('./routers/clustersRouter')
 
 const app = express()
 
@@ -45,6 +46,7 @@ app.use('/resource', resourceRouter)
 app.use('/search', searchRouter)
 app.use('/feedback', feedbackRouter)
 app.use('/content', contentRouter)
+app.use('/cluster', clustersRouter)
 
 const PORT = process.env.PORT || 5000
 
