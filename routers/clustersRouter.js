@@ -7,9 +7,34 @@ const authMiddleware = require('../middlewares/auth')
 const router = new Router()
 
 router.post(
-  '/prepare', 
+  '/check-cluster-cache', 
   authMiddleware, 
-  controller.clustersPreparing)
+  controller.checkClusterCache)
+
+router.post(
+  '/save-cluster-cache', 
+  authMiddleware, 
+  controller.saveClusterCache)
+
+router.post(
+  '/prepare/other', 
+  authMiddleware, 
+  controller.otherClustersPreparing)
+
+router.post(
+  '/prepare/first', 
+  authMiddleware, 
+  controller.firstClustersPreparing)
+
+router.post(
+  '/prepare/other', 
+  authMiddleware, 
+  controller.otherClustersPreparing)
+
+router.post(
+  '/check-galaxies', 
+  authMiddleware, 
+  controller.checkGalaxies)
 
 router.post(
   '/get-descriptions', 

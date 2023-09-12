@@ -6,7 +6,6 @@ const Group = require('../models/Group')
 const User = require('../models/User')
 const Moderation = require('../models/Moderation')
 const Resource = require('../models/Resource')
-const Role = require('../models/Role')
 
 
 class GroupController {
