@@ -27,6 +27,7 @@ class ClusterController {
 
       const cacheClusters = await Galaxy.find({ keywords: { $in: keywordsList } })
 
+      const cachedIds = []
       const cached = []
       const fresh = []
 
@@ -39,14 +40,15 @@ class ClusterController {
             topic: cacheCluster.topic,
             description: cacheCluster.description,
           })
+
+          cachedIds.push(cacheCluster._id)
         } else {
           fresh.push(cluster)
         }
       })
 
-      const updCachedIds = cached.map(cluster => cluster._id)
       await Galaxy.updateMany(
-        { _id: { $in: updCachedIds } },
+        { _id: { $in: cachedIds } },
         { 
           $set: { dateUpdate: new Date() } 
         })
