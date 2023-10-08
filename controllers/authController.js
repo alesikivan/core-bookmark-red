@@ -28,6 +28,9 @@ class authController {
       // Get `User` role from Mongo
       const userRole = await Role.findOne({value: 'USER'})
 
+      if (!userRole) 
+        return res.status(400).json({message: 'Invalid role. Please contact admins.'})
+
       // Generate hash by password
       let hash = await bcrypt.hash(password, 7)
 
