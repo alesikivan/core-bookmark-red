@@ -9,12 +9,17 @@ const router = new Router()
 router.post(
   '/check-cluster-cache', 
   authMiddleware, 
-  controller.checkClusterCache)
+  controller.checkDescriptionCache)
 
 router.post(
   '/save-cluster-cache', 
   authMiddleware, 
-  controller.saveClusterCache)
+  controller.saveDescriptionCache)
+
+router.post(
+  '/check-cache', 
+  authMiddleware, 
+  controller.checkCache)
 
 router.post(
   '/prepare/other', 

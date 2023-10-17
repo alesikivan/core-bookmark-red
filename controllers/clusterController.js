@@ -1,5 +1,7 @@
 const { default: axios } = require("axios")
+
 const Galaxy = require('../models/Galaxy')
+const ClusterCache = require("../models/ClusterCache")
 
 class ClusterController {
   async firstClustersPreparing(req, res) {
@@ -18,7 +20,7 @@ class ClusterController {
     }
   }
 
-  async checkClusterCache(req, res) {
+  async checkDescriptionCache(req, res) {
     try {
       // [ { id: 1, keywords: 'doctor, surgeon, hospital' }, ... ]
       const { clusters } = req.body
@@ -60,7 +62,7 @@ class ClusterController {
     }
   }
 
-  async saveClusterCache(req, res) {
+  async saveDescriptionCache(req, res) {
     try {
       const { clusters } = req.body
 
@@ -103,7 +105,38 @@ class ClusterController {
       const { data } = await axios
         .post(`${process.env.PYTHON_SERVER}/prepare/other/clusters`, { ids })
 
+      if (data.clusters.length) {
+        const clusterCache = new ClusterCache({
+          hash: data.hash,
+          clusters: data.clusters,
+          dateCreate: new Date(),
+          dateUpdate: new Date()
+        })
+  
+        await clusterCache.save()
+      }
+
       return res.status(200).json({ ...data })
+    } catch (error) {
+      console.log(error);
+      return res.status(400).json({ message: 'Invalid clustering' })
+    }
+  }
+
+  async checkCache(req, res) {
+    try {
+      const { ids } = req.body
+
+      if (ids.length === 0) return res.status(200).json([])
+
+      const data = await axios
+        .post(`${process.env.PYTHON_SERVER}/prepare/check_cache`, { ids })
+
+      if (!data.data) return res.status(200).json([])
+
+      const clustering = data.data.clustering
+
+      return res.status(200).json(clustering)
     } catch (error) {
       console.log(error);
       return res.status(400).json({ message: 'Invalid clustering' })
